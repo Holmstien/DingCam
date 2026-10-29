@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: DingCam
+## Notes: Records your journey: level-up clips and shots (with /played), boss and rare kill clips, first zone visits and loot.
+## Author: Holmstein (built with Claude)
+## Version: 1.0.0
+## SavedVariables: DingCamDB, DingCamWarned, DingCamLoot, DingCamEvents, DingCamZones, DingCamActive, DingCamArmPending, DingCamNoHelperWarn
+## SavedVariablesPerCharacter: DingCamCharDB
+
+Status.lua
+DingCam.lua

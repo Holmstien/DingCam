@@ -1,0 +1,5 @@
+# Build output (zips are attached to GitHub releases instead)
+dist/
+# Private working notes
+NOTES.md
+CURSEFORGE.md
