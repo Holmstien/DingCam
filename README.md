@@ -2,7 +2,7 @@
 
 **Your WoW Forever journey, recorded automatically.** Every level-up, boss kill, rare kill, epic drop and new zone is saved as a video clip or screenshot, then filed by character, without you pressing anything.
 
-> **Want video clips? You need the DingCam helper on your PC.** The addon alone only takes screenshots. Download **`DingCam-x.y.z.zip`** from the [Releases page](https://github.com/Holmstien/DingCam/releases), unzip it and double-click **Install DingCam**.
+*Video clips come from a small open-source companion app that runs on your PC (see [How it works](#how-it-works)). The addon on its own saves screenshots.*
 
 ![A level-up caught by DingCam](media/ding.gif)
 
