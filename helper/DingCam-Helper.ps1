@@ -7,8 +7,9 @@
 #   - takes normal .jpg shots for blue/purple loot (tooltip flash) and the first visit to each zone.
 #   - logs everything in its SavedVariables (written at logout or /reload).
 # This helper:
-#   1. Sees the .tga, waits 5 s (25 s for the level 60 "big moment"), presses NVIDIA's "Save Instant Replay" hotkey
-#      and hard-links the clip (from NVIDIA's save folder) into Level-ups\_New.
+#   1. Sees the .tga, waits 5 s (25 s for the level 60 "big moment"), then saves a clip with your recorder:
+#      NVIDIA or AMD Instant Replay (presses its save hotkey), or OBS's Replay Buffer (asks OBS over its WebSocket,
+#      on this PC only). The clip is hard-linked into Level-ups\_New.
 #   2. Moves the .tga out of Screenshots into Instant\_New, converted to .jpg.
 #   3. Copies the banner .jpg (4-5.5 s after the .tga) into Banner\_New. The original stays in Screenshots.
 #   4. When the SavedVariables update, files everything per character:
@@ -47,8 +48,11 @@ if (-not (Test-Path $Settings)) {
         _help         = 'Leave a value empty ("") and DingCam finds it automatically. Restart the helper after editing.'
         WowFolder     = ''   # the World of Warcraft folder (the one containing _retail_, _classic_, ...)
         JourneyFolder = ''   # where your clips and pictures are filed; empty = Videos\DingCam Journey
-        ClipFolder    = ''   # where NVIDIA saves Instant Replay clips; empty = NVIDIA's own setting
-        SaveHotkey    = ''   # e.g. "Alt+F10"; empty = NVIDIA's "Save the last ... minutes" hotkey; "none" = never press
+        Recorder      = ''   # "nvidia", "amd" or "obs"; empty = OBS when it's open with its Replay Buffer on, else your graphics card's
+        ClipFolder    = ''   # where the recorder saves clips; empty = its own folder (NVIDIA's setting, Videos\Radeon ReLive, or what OBS reports)
+        SaveHotkey    = ''   # e.g. "Alt+F10"; empty = NVIDIA's own hotkey or AMD's Ctrl+Shift+S; "none" = never press
+        ObsPort       = ''   # OBS WebSocket port; empty = read from OBS's settings (usually 4455)
+        ObsPassword   = ''   # OBS WebSocket password; empty = read from OBS's settings
     }
     [IO.File]::WriteAllText($Settings, ($default | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 }
@@ -71,19 +75,64 @@ function Find-WowFolder {
     $null
 }
 
-# NVIDIA's save folder (the NVIDIA app / GeForce Experience keep it in the registry), else Videos.
-function Find-ClipFolder {
-    try {
-        $v = (Get-ItemProperty 'HKCU:\Software\NVIDIA Corporation\Global\ShadowPlay\NVSPCAPS' -ErrorAction Stop).DefaultPathW
-        if ($v -is [byte[]]) { $p = [Text.Encoding]::Unicode.GetString($v).TrimEnd([char]0); if ($p -and (Test-Path $p)) { return $p } }
-    } catch { }
-    [Environment]::GetFolderPath('MyVideos')
-}
-
 $wow     = if ($cfg.WowFolder) { $cfg.WowFolder } else { Find-WowFolder }
-$clipDir = if ($cfg.ClipFolder) { $cfg.ClipFolder } else { Find-ClipFolder }
 $journey = if ($cfg.JourneyFolder) { $cfg.JourneyFolder } else { Join-Path ([Environment]::GetFolderPath('MyVideos')) 'DingCam Journey' }
 $nvSettings = "$env:LOCALAPPDATA\NVIDIA Corporation\NVIDIA Overlay\ShareSettings.json"
+$obsWsConfig = "$env:APPDATA\obs-studio\plugin_config\obs-websocket\config.json"
+$gpu = (Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | % Name) -join ' | '
+
+# ---------------------------------------------------------------- recorders
+# OBS's WebSocket server (OBS > Tools > WebSocket Server Settings): port and password from DingCam's settings, else from
+# OBS's own settings file so nothing needs copying. Only ever used to talk to OBS on this PC (127.0.0.1).
+function Get-ObsConfig {
+    $j = $null; try { $j = Get-Content $obsWsConfig -Raw -ErrorAction Stop | ConvertFrom-Json } catch { }
+    [pscustomobject]@{
+        Enabled  = [bool]($j -and $j.server_enabled) -or [bool]$cfg.ObsPort
+        Port     = if ($cfg.ObsPort) { [int]$cfg.ObsPort } elseif ($j -and $j.server_port) { [int]$j.server_port } else { 4455 }
+        Password = if ($cfg.ObsPassword) { [string]$cfg.ObsPassword } elseif ($j -and $j.auth_required) { [string]$j.server_password } else { '' }
+    }
+}
+
+# The graphics card's own recorder.
+function Get-GpuRecorder {
+    if ((Test-Path $nvSettings) -or $gpu -match 'NVIDIA') { 'nvidia' } elseif ($gpu -match 'AMD|Radeon') { 'amd' } else { 'none' }
+}
+
+# Which recorder saves the clips: the setting, else OBS while it's open with its WebSocket server on, else the
+# graphics card's. (When OBS is open but its Replay Buffer is off, Save-Clip falls back to the graphics card.)
+function Get-Recorder {
+    if ($cfg.Recorder) { return ([string]$cfg.Recorder).ToLower() }
+    if ((Get-Process obs64 -ErrorAction SilentlyContinue) -and (Get-ObsConfig).Enabled) { return 'obs' }
+    Get-GpuRecorder
+}
+
+function Get-RecName($rec) {
+    switch ($rec) { 'nvidia' { 'NVIDIA Instant Replay' } 'amd' { 'AMD Instant Replay' } 'obs' { 'OBS Replay Buffer' } default { 'no recorder' } }
+}
+
+# What to tell the player when no clip appeared.
+function Get-FixText($rec) {
+    switch ($rec) {
+        'nvidia' { 'Press Alt+Z and turn Instant Replay on.' }
+        'amd'    { 'Open AMD Software (Alt+R) > Record & Stream and turn Instant Replay on.' }
+        'obs'    { 'In OBS, click "Start Replay Buffer" (it needs Settings > Output > Replay Buffer enabled).' }
+        default  { 'No NVIDIA, AMD or OBS recorder was found. See the DingCam settings file.' }
+    }
+}
+
+# Where the recorder saves clips (searched after a hotkey save): the setting, else the recorder's own folder.
+function Get-ClipFolder($rec) {
+    if ($cfg.ClipFolder) { return [string]$cfg.ClipFolder }
+    $videos = [Environment]::GetFolderPath('MyVideos')
+    if ($rec -eq 'nvidia') {   # the NVIDIA app / GeForce Experience keep it in the registry
+        try {
+            $v = (Get-ItemProperty 'HKCU:\Software\NVIDIA Corporation\Global\ShadowPlay\NVSPCAPS' -ErrorAction Stop).DefaultPathW
+            if ($v -is [byte[]]) { $p = [Text.Encoding]::Unicode.GetString($v).TrimEnd([char]0); if ($p -and (Test-Path $p)) { return $p } }
+        } catch { }
+    }
+    if ($rec -eq 'amd') { $p = Join-Path $videos 'Radeon ReLive'; if (Test-Path $p) { return $p } }   # AMD Software's default
+    $videos
+}
 
 $clipRoot    = Join-Path $journey 'Level-ups'   # one subfolder per character
 $bannerRoot  = Join-Path $journey 'Banner'
@@ -174,10 +223,12 @@ function Parse-Hotkey($text) {
     }
 }
 
-# The keys that save an Instant Replay: the setting, else NVIDIA's own "DVRSave" shortcut, else Alt+F10.
-function Get-SaveKeys {
-    if ($cfg.SaveHotkey -eq 'none') { return @() }
+# The keys that save an Instant Replay: the setting, else NVIDIA's own "DVRSave" shortcut (default Alt+F10), or AMD's
+# default Ctrl+Shift+S. OBS is asked over its WebSocket instead, so it needs no keys.
+function Get-SaveKeys($rec) {
+    if ($cfg.SaveHotkey -eq 'none' -or $rec -eq 'obs' -or $rec -eq 'none') { return @() }
     if ($cfg.SaveHotkey) { return @(Parse-Hotkey $cfg.SaveHotkey) }
+    if ($rec -eq 'amd') { return @(0x11, 0x10, 0x53) }
     try { $k = @((Get-Content $nvSettings -Raw | ConvertFrom-Json).settings.shortcuts.DVRSave); if ($k.Count) { return [int[]]$k } } catch { }
     @(0x12, 0x79)
 }
@@ -191,15 +242,85 @@ function Format-Hotkey($vks) {
     }) -join '+'
 }
 
+# A minimal WebSocket text client, for OBS's built-in WebSocket server (obs-websocket 5, OBS 28 and later).
+Add-Type -TypeDefinition @'
+using System; using System.IO; using System.Net.WebSockets; using System.Text; using System.Threading;
+namespace DingCam {
+public class WsText : IDisposable {
+    ClientWebSocket ws = new ClientWebSocket();
+    public void Connect(string uri, int ms) {
+        if (!ws.ConnectAsync(new Uri(uri), CancellationToken.None).Wait(ms)) throw new TimeoutException("OBS did not answer");
+    }
+    public void Send(string s) {
+        var b = Encoding.UTF8.GetBytes(s);
+        ws.SendAsync(new ArraySegment<byte>(b), WebSocketMessageType.Text, true, CancellationToken.None).Wait(5000);
+    }
+    public string Receive(int ms) {
+        var buf = new byte[16384]; var all = new MemoryStream();
+        using (var cts = new CancellationTokenSource(ms)) {
+            WebSocketReceiveResult r;
+            do {
+                r = ws.ReceiveAsync(new ArraySegment<byte>(buf), cts.Token).Result;
+                if (r.MessageType == WebSocketMessageType.Close) throw new IOException("OBS closed the connection (wrong WebSocket password?)");
+                all.Write(buf, 0, r.Count);
+            } while (!r.EndOfMessage);
+        }
+        return Encoding.UTF8.GetString(all.ToArray());
+    }
+    public void Dispose() {
+        try { ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).Wait(1000); } catch { }
+        ws.Dispose();
+    }
+}
+}
+'@
+
+# One short OBS session: connect, log in, send the requests in order, return their responses by request name.
+# OBS's login: base64(sha256(base64(sha256(password + salt)) + challenge)). Throws if OBS can't be reached.
+function Invoke-Obs([string[]]$requests) {
+    $oc = Get-ObsConfig
+    $ws = New-Object DingCam.WsText
+    try {
+        $ws.Connect("ws://127.0.0.1:$($oc.Port)", 3000)
+        $hello = $ws.Receive(3000) | ConvertFrom-Json
+        $identify = @{ rpcVersion = 1; eventSubscriptions = 0 }
+        if ($hello.d.authentication) {
+            $sha = [Security.Cryptography.SHA256]::Create()
+            $hash = { param($s) [Convert]::ToBase64String($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($s))) }
+            $identify.authentication = & $hash ((& $hash ($oc.Password + $hello.d.authentication.salt)) + $hello.d.authentication.challenge)
+        }
+        $ws.Send((@{ op = 1; d = $identify } | ConvertTo-Json -Compress))
+        if (($ws.Receive(3000) | ConvertFrom-Json).op -ne 2) { throw 'OBS refused the login (check the WebSocket password).' }
+        $out = @{}
+        foreach ($r in $requests) {
+            $ws.Send((@{ op = 6; d = @{ requestType = $r; requestId = $r } } | ConvertTo-Json -Compress))
+            do { $resp = $ws.Receive(5000) | ConvertFrom-Json } while ($resp.op -ne 7 -or $resp.d.requestId -ne $r)
+            $out[$r] = $resp.d
+        }
+        $out
+    } finally { $ws.Dispose() }
+}
+
+function Test-ObsReplay { try { [bool](Invoke-Obs 'GetReplayBufferStatus').GetReplayBufferStatus.responseData.outputActive } catch { $false } }
+
 if ($Check) {
-    $replayOn = $null; $replaySec = 0
-    try { $v = (Get-Content $nvSettings -Raw | ConvertFrom-Json).settings.video; $replayOn = [bool]$v.irEnabled; $replaySec = [int]$v.irBufferLength } catch { }
+    $rec = Get-Recorder; $replayOn = $null; $replaySec = 0; $obsError = $null
+    if ($rec -eq 'nvidia') {
+        try { $v = (Get-Content $nvSettings -Raw | ConvertFrom-Json).settings.video; $replayOn = [bool]$v.irEnabled; $replaySec = [int]$v.irBufferLength } catch { }
+    }
+    if ($rec -eq 'obs') {
+        try { $replayOn = [bool](Invoke-Obs 'GetReplayBufferStatus').GetReplayBufferStatus.responseData.outputActive } catch { $obsError = $_.Exception.InnerException.Message; if (-not $obsError) { $obsError = $_.Exception.Message } }
+    }
     $addonIn = if ($wow) { @(Get-ChildItem "$wow\_*_\Interface\AddOns\DingCam\DingCam.toc" -ErrorAction SilentlyContinue | % { $_.Directory.Parent.Parent.Parent.Name }) } else { @() }
     [pscustomobject]@{
         Version = $Version; Settings = $Settings; Log = $log
-        WowFolder = $wow; ClipFolder = $clipDir; JourneyFolder = $journey
-        SaveHotkey = Format-Hotkey (Get-SaveKeys)
-        Nvidia = (Test-Path $nvSettings); ReplayOn = $replayOn; ReplaySeconds = $replaySec
+        WowFolder = $wow; JourneyFolder = $journey
+        Recorder = $rec; RecorderName = Get-RecName $rec; RecorderFromSettings = [bool]$cfg.Recorder; Gpu = $gpu
+        ClipFolder = if ($rec -eq 'obs') { 'reported by OBS' } else { Get-ClipFolder $rec }
+        SaveHotkey = if ($rec -eq 'obs') { 'none needed' } else { Format-Hotkey (Get-SaveKeys $rec) }
+        ReplayOn = $replayOn; ReplaySeconds = $replaySec
+        ObsInstalled = (Test-Path "$env:APPDATA\obs-studio"); ObsRunning = [bool](Get-Process obs64 -ErrorAction SilentlyContinue)
+        ObsWebSocket = (Get-ObsConfig).Enabled; ObsError = $obsError
         AddonIn = $addonIn
     } | ConvertTo-Json -Compress
     exit
@@ -220,28 +341,59 @@ function Save-Clip($dingTime) {
     $wait = if ($script:bigMoment) { 25 } else { 5 }   # wait so the moment (and, at 60, the celebration) lands inside the clip
     Start-Sleep -Seconds $wait
     $t0 = Get-Date
-    $keys = @(Get-SaveKeys)
-    if ($keys.Count) { Send-Keys $keys; Log "Signal seen: pressed the Instant Replay save hotkey after $wait s." }
-    else { Log "Signal seen: SaveHotkey is ""none"", so no key was pressed (waiting for a clip anyway)." }
-    $deadline = $t0.AddSeconds(45)
-    while ((Get-Date) -lt $deadline) {
-        Start-Sleep -Seconds 2
-        $clip = Get-ChildItem $clipDir -Recurse -Filter *.mp4 -File -ErrorAction SilentlyContinue |
-                ? { $_.CreationTime -gt $t0.AddSeconds(-3) } | Sort CreationTime | Select -Last 1
-        if (-not $clip) { continue }
-        try { $s = [IO.File]::Open($clip.FullName, 'Open', 'Read', 'None'); $s.Close() } catch { continue }   # still being written
+    $rec = Get-Recorder
+    $clip = $null
+    if ($rec -eq 'obs') {   # ask OBS to save its Replay Buffer; it reports the file it wrote
+        try {
+            $s = Invoke-Obs 'GetReplayBufferStatus', 'GetLastReplayBufferReplay'
+            if ($s.GetReplayBufferStatus.responseData.outputActive) {
+                $before = $s.GetLastReplayBufferReplay.responseData.savedReplayPath
+                $saved = Invoke-Obs 'SaveReplayBuffer'
+                if (-not $saved.SaveReplayBuffer.requestStatus.result) { throw "OBS said: $($saved.SaveReplayBuffer.requestStatus.comment)" }
+                Log "Signal seen: asked OBS to save its Replay Buffer after $wait s."
+                for ($i = 0; $i -lt 30 -and -not $clip; $i++) {
+                    Start-Sleep -Seconds 1
+                    $p = (Invoke-Obs 'GetLastReplayBufferReplay').GetLastReplayBufferReplay.responseData.savedReplayPath
+                    if ($p -and $p -ne $before -and (Test-Path $p)) {
+                        try { $f = [IO.File]::Open($p, 'Open', 'Read', 'None'); $f.Close(); $clip = Get-Item $p } catch { }   # still being written
+                    }
+                }
+            } elseif ($cfg.Recorder) { Log 'Signal seen, but the OBS Replay Buffer is off.' }
+            else { $rec = Get-GpuRecorder; Log "OBS is open but its Replay Buffer is off: using $(Get-RecName $rec) instead." }
+        } catch {
+            Log "Could not reach OBS: $($_.Exception.Message)"
+            if (-not $cfg.Recorder) { $rec = Get-GpuRecorder }
+        }
+    }
+    if ($rec -ne 'obs' -and -not $clip) {   # NVIDIA / AMD: press the save hotkey, then watch the clip folder
+        $keys = @(Get-SaveKeys $rec)
+        if ($keys.Count) { Send-Keys $keys; Log "Signal seen: pressed $(Format-Hotkey $keys) ($(Get-RecName $rec)) after $wait s." }
+        elseif ($rec -eq 'none') { Log 'Signal seen, but no recorder was found (NVIDIA, AMD or OBS).' }
+        else { Log "Signal seen: SaveHotkey is ""none"", so no key was pressed (waiting for a clip anyway)." }
+        $dir = Get-ClipFolder $rec
+        $deadline = $t0.AddSeconds(45)
+        while ($rec -ne 'none' -and -not $clip -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 2
+            $c = Get-ChildItem $dir -Recurse -File -Include *.mp4, *.mkv, *.mov -ErrorAction SilentlyContinue |
+                 ? { $_.CreationTime -gt $t0.AddSeconds(-3) } | Sort CreationTime | Select -Last 1
+            if (-not $c) { continue }
+            try { $f = [IO.File]::Open($c.FullName, 'Open', 'Read', 'None'); $f.Close(); $clip = $c } catch { }   # still being written
+        }
+    }
+    if ($clip) {
         $newDir = Join-Path $clipRoot $pendingName
         New-Item -ItemType Directory -Force $newDir | Out-Null
-        $dest = Join-Path $newDir ("Ding {0:yyyy-MM-dd HH-mm-ss}.mp4" -f $dingTime)
+        $dest = Join-Path $newDir ("Ding {0:yyyy-MM-dd HH-mm-ss}{1}" -f $dingTime, $clip.Extension)
         try { New-Item -ItemType HardLink -Path $dest -Target $clip.FullName -ErrorAction Stop | Out-Null }
         catch { Copy-Item $clip.FullName $dest }
         Log "Clip saved: $($clip.FullName) -> $dest"
         if ($script:lastFail) { $script:lastFail = $null; Update-Status }
         return
     }
-    Log "No clip appeared in $clipDir within 45 s. Is NVIDIA Instant Replay turned on (Alt+Z > Instant Replay)?"
+    $fix = Get-FixText $rec
+    Log "No clip was saved ($(Get-RecName $rec)). $fix"
     $script:lastFail = '{0:MMM d, h:mm tt}' -f $dingTime; Update-Status
-    Notify 'DingCam: clip NOT saved' 'NVIDIA Instant Replay looks off. Press Alt+Z and turn Instant Replay on.'
+    Notify 'DingCam: clip NOT saved' "$(Get-RecName $rec) looks off. $fix"
 }
 
 function Notify($title, $text) {
@@ -285,22 +437,29 @@ function Save-Banner($path, $dingTime) {
 $script:bannerSources = @{}   # screenshots already used as banners (so loot/zone filing doesn't claim them)
 $script:bannerOf = @{}        # pending banner copy -> its source screenshot
 
-# Tells the addon (read at login or /reload): Instant Replay on/off and length, last failed clip, level 60 mode armed,
-# and when the helper last checked in (so the addon can tell you if the helper isn't running).
+# Tells the addon (read at login or /reload): which recorder, whether it's on and its length (when known: NVIDIA
+# reports both, OBS reports on/off, AMD neither), last failed clip, level 60 mode armed, and when the helper last
+# checked in (so the addon can tell you if the helper isn't running).
 $script:lastFail = $null
 function Update-Status {
-    $on = $null; $len = 0
-    try { $v = (Get-Content $nvSettings -Raw | ConvertFrom-Json).settings.video; $on = [bool]$v.irEnabled; $len = [int]$v.irBufferLength } catch { }
+    $rec = Get-Recorder; $on = $null; $len = 0
+    if ($rec -eq 'obs') {
+        $on = Test-ObsReplay
+        if (-not $on -and -not $cfg.Recorder) { $rec = Get-GpuRecorder; $on = $null }   # auto: clips fall back to the graphics card
+    }
+    if ($rec -eq 'nvidia') {
+        try { $v = (Get-Content $nvSettings -Raw | ConvertFrom-Json).settings.video; $on = [bool]$v.irEnabled; $len = [int]$v.irBufferLength } catch { }
+    }
     $seen = [Math]::Floor([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() / 60) * 60   # to the minute, so the file changes at most once a minute
-    $lua = "-- Written by the DingCam helper on your PC. Do not edit.`r`nDingCamStatus = {{ replayOff = {0}, lastFail = {1}, bigMoment = {2}, bigMomentChar = `"{4}`", replayLength = {3}, helperVersion = `"{5}`", helperSeen = {6} }}`r`n" -f `
+    $lua = "-- Written by the DingCam helper on your PC. Do not edit.`r`nDingCamStatus = {{ replayOff = {0}, lastFail = {1}, bigMoment = {2}, bigMomentChar = `"{4}`", replayLength = {3}, helperVersion = `"{5}`", helperSeen = {6}, recorder = `"{7}`" }}`r`n" -f `
            ($(if ($on -eq $false) { 'true' } else { 'false' })), ($(if ($script:lastFail) { '"' + $script:lastFail + '"' } else { 'nil' })),
-           ($(if ($script:bigMoment) { 'true' } else { 'false' })), $len, ($script:bigMomentChar -replace '["\\]', ''), $Version, $seen
+           ($(if ($script:bigMoment) { 'true' } else { 'false' })), $len, ($script:bigMomentChar -replace '["\\]', ''), $Version, $seen, $rec
     foreach ($d in Get-ChildItem "$wow\_*_\Interface\AddOns\DingCam" -Directory -ErrorAction SilentlyContinue) {
         $p = Join-Path $d.FullName 'Status.lua'
         if (-not (Test-Path $p) -or (Get-Content $p -Raw) -ne $lua) { [IO.File]::WriteAllText($p, $lua) }
     }
     if ($on -eq $false -and $script:replayWasOn -and (Get-Process Wow* -ErrorAction SilentlyContinue)) {
-        Notify 'DingCam: Instant Replay is OFF' 'Clips will not be saved. Press Alt+Z and turn Instant Replay on.'
+        Notify "DingCam: $(Get-RecName $rec) is OFF" "Clips will not be saved. $(Get-FixText $rec)"
     }
     $script:replayWasOn = ($on -ne $false)
 }
@@ -470,7 +629,8 @@ function Export-Diary {
 
 if ($Once) { Save-Clip (Get-Date); File-Pending; exit }
 
-Log "DingCam helper $Version started. WoW: $wow | Clips: $clipDir | Journey: $journey | Save hotkey: $(Format-Hotkey (Get-SaveKeys))"
+$startRec = Get-Recorder
+Log "DingCam helper $Version started. WoW: $wow | Recorder: $(Get-RecName $startRec)$(if ($startRec -ne 'obs') { " (clips in $(Get-ClipFolder $startRec), save keys $(Format-Hotkey (Get-SaveKeys $startRec)))" }) | Journey: $journey"
 Update-BigMoment
 Update-Status
 $seen = @{}

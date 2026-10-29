@@ -39,15 +39,20 @@ Your own screenshots (Print Screen) are never moved, renamed or deleted.
 DingCam has two parts:
 
 1. **The addon** (in game) notices the moment and takes a screenshot, using only WoW's normal screenshot feature.
-2. **The helper** (a small background program on your PC) sees that screenshot appear and presses NVIDIA's "save Instant Replay" hotkey a few seconds later, so the moment is inside the clip. When you log out or `/reload`, it files everything by character.
+2. **The helper** (a small background program on your PC) sees that screenshot appear and, a few seconds later so the moment is inside the clip, saves a clip with your recorder: **NVIDIA** or **AMD** Instant Replay (by pressing its save hotkey) or **OBS**'s Replay Buffer (through OBS's own WebSocket, on your PC only). When you log out or `/reload`, it files everything by character.
 
 Without the helper, the addon still works, but you get screenshots only, no clips. It will tell you so.
 
 ## Requirements
 
 - Windows 10 or 11
-- An **NVIDIA graphics card** with the **NVIDIA app** (or GeForce Experience), with **Instant Replay turned on**: press `Alt+Z` > Instant Replay > On. A length of 30 seconds or more is recommended.
 - World of Warcraft: Forever
+- One recorder for the clips. A replay length of 30 seconds or more is recommended.
+  - **NVIDIA:** the NVIDIA app (or GeForce Experience) with **Instant Replay on**: `Alt+Z` > Instant Replay > On.
+  - **AMD:** AMD Software: Adrenalin with **Instant Replay on**: `Alt+R` > Record & Stream > Instant Replay. *(AMD support is new and not yet tested on AMD hardware; reports welcome.)*
+  - **OBS Studio 28 or newer:** the **Replay Buffer** enabled (Settings > Output) and started, and the **WebSocket server** on (Tools > WebSocket Server Settings). DingCam reads OBS's port and password from OBS's own settings.
+
+DingCam picks the recorder for you: OBS while it's open with its Replay Buffer running, otherwise your graphics card's Instant Replay. You can force one with the `Recorder` setting.
 
 ## Install
 
@@ -55,22 +60,22 @@ Without the helper, the addon still works, but you get screenshots only, no clip
 2. **Helper:** download the latest release from the [Releases page](https://github.com/Holmstien/DingCam/releases), unzip it, and double-click **`Install DingCam`**. No admin rights are needed. It:
    - installs the helper for your Windows account,
    - sets it to start when you sign in,
-   - finds your WoW folder, NVIDIA's clip folder and your save hotkey on its own,
+   - finds your WoW folder and your recorder (NVIDIA, AMD or OBS) on its own,
    - and shows a short report of anything you need to fix.
 3. **Check in game:** type `/dingcam status`, then `/dingcam test` to save a test clip. After a `/reload`, it appears in `Videos\DingCam Journey`.
 
-Windows may warn about running a downloaded script. The helper is plain PowerShell you can read (`helper\DingCam-Helper.ps1`). It never connects to the internet.
+Windows may warn about running a downloaded script. The helper is plain PowerShell you can read (`helper\DingCam-Helper.ps1`). It never connects to the internet; the only connection it ever makes is to OBS on your own PC, if you use OBS.
 
 ## Commands
 
 | Command | Does |
 |---|---|
-| `/dingcam status` | Is the helper running? Is Instant Replay on? |
+| `/dingcam status` | Is the helper running? Which recorder, and is it on? |
 | `/dingcam test` | Saves a test ding (clip plus screenshots), named `TEST ...` |
 | `/dingcam boss` / `rare` | Test a boss or rare kill clip |
 | `/dingcam loot` | Test the loot flash with your equipped weapon |
 | `/dingcam zone` | Retake the first-visit shot for this zone |
-| `/dingcam warn` | Preview the "Instant Replay is off" warning |
+| `/dingcam warn` | Preview the "recorder is off" warning |
 | `/dingcam remind` | Turn helper reminders back on, if you clicked "Don't remind me" |
 
 ## Settings
@@ -81,8 +86,10 @@ The helper finds everything automatically. To change something, edit `%APPDATA%\
 |---|---|
 | `WowFolder` | Found through Battle.net |
 | `JourneyFolder` | `Videos\DingCam Journey` |
-| `ClipFolder` | NVIDIA's own save folder |
-| `SaveHotkey` | NVIDIA's own "save Instant Replay" shortcut (usually `Alt+F10`) |
+| `Recorder` | Automatic: `obs` while OBS is open with its Replay Buffer running, otherwise `nvidia` or `amd` |
+| `ClipFolder` | The recorder's own folder: NVIDIA's setting, `Videos\Radeon ReLive` for AMD (OBS reports its files itself) |
+| `SaveHotkey` | NVIDIA's own "save Instant Replay" shortcut (usually `Alt+F10`), or AMD's `Ctrl+Shift+S` |
+| `ObsPort`, `ObsPassword` | Read from OBS's WebSocket settings |
 
 The log is at `%LOCALAPPDATA%\DingCam\dingcam.log`.
 
@@ -92,13 +99,13 @@ Double-click **`Uninstall DingCam`**. It stops the helper and removes it from st
 
 ## FAQ
 
-**Is this allowed?** The addon only uses WoW's own screenshot function. The helper runs outside the game: it watches your Screenshots folder and presses NVIDIA's hotkey. It doesn't read or change the game, and doesn't automate any gameplay.
+**Is this allowed?** The addon only uses WoW's own screenshot function. The helper runs outside the game: it watches your Screenshots folder and asks your recorder to save a clip. It doesn't read or change the game, and doesn't automate any gameplay.
 
-**Does it slow my game?** The helper mostly sleeps. NVIDIA Instant Replay has a small cost of its own, the same as using it without DingCam.
+**Does it slow my game?** The helper mostly sleeps. Instant Replay and OBS's Replay Buffer have a small cost of their own, the same as using them without DingCam.
 
-**Do clips take double the space?** No. If your Journey and NVIDIA's folder are on the same drive, the clip is filed as a link to the same file.
+**Do clips take double the space?** No. If your Journey and the recorder's folder are on the same drive, the clip is filed as a link to the same file.
 
-**AMD or OBS?** Not yet, NVIDIA only for now.
+**I use OBS and an NVIDIA/AMD card. Which one records?** OBS, whenever it's open with its Replay Buffer running. Otherwise your card's Instant Replay. Set `Recorder` to choose one yourself.
 
 ---
 Made by **Holmstein** (built with Claude) for WoW Forever, Nov 2026. Released under the [MIT License](LICENSE).

@@ -1,7 +1,7 @@
 -- DingCam: on level-up (and boss or rare kills), take one screenshot in TGA format (your normal
 -- screenshots stay JPG). A new .tga in the Screenshots folder is the signal the
 -- DingCam helper on your PC watches for; it waits a few seconds so the moment is in the clip,
--- then presses NVIDIA's Instant Replay save hotkey. Dings are logged in DingCamDB (with /played), kills in
+-- then saves a clip with NVIDIA or AMD Instant Replay or OBS's Replay Buffer. Dings are logged in DingCamDB (with /played), kills in
 -- DingCamEvents, first zone visits in DingCamZones, loot in DingCamLoot, so the helper can
 -- file everything per character after you log out or /reload.
 -- Without the helper, moments are saved as normal screenshots (no clips) and you're told how to get it.
@@ -126,9 +126,26 @@ local function zoneCheck(delay)
     end)
 end
 
--- Level 59: one level to go. Popup (after the banner shot) asking for a longer Instant Replay, then Reload UI to arm DingCam.
+-- How to turn on or lengthen each recorder the PC helper can use (DingCamStatus.recorder; older helpers mean NVIDIA).
+local RECORDERS = {
+    nvidia = { name = "NVIDIA Instant Replay",
+               fix = "press |cffffff00Alt+Z|r, open |cffffff00Instant Replay|r and turn it |cffffff00On|r",
+               length = "press |cffffff00Alt+Z|r, open |cffffff00Instant Replay|r and set the length to |cffffff001 minute|r (or more)" },
+    amd    = { name = "AMD Instant Replay",
+               fix = "open |cffffff00AMD Software|r (Alt+R) > Record & Stream and turn |cffffff00Instant Replay|r on",
+               length = "in |cffffff00AMD Software|r (Alt+R) > Record & Stream, set the Instant Replay duration to |cffffff001 minute|r (or more)" },
+    obs    = { name = "OBS Replay Buffer",
+               fix = "in |cffffff00OBS|r, click |cffffff00Start Replay Buffer|r",
+               length = "in |cffffff00OBS|r, set Settings > Output > Replay Buffer > Maximum Replay Time to |cffffff0060 s|r (or more)" },
+}
+local function recorder()
+    return RECORDERS[DingCamStatus and DingCamStatus.recorder or "nvidia"] or RECORDERS.nvidia
+end
+local function plain(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end   -- without colour codes, for chat
+
+-- Level 59: one level to go. Popup (after the banner shot) asking for a longer replay, then Reload UI to arm DingCam.
 StaticPopupDialogs["DINGCAM_ALMOST_60"] = {
-    text = "|cffffd100One level to go!|r\n\nYour level 60 moment deserves the full story.\n\nPress |cffffff00Alt+Z|r, open |cffffff00Instant Replay|r and set the length to |cffffff001 minute|r (or more).\nThen click |cffffff00Reload UI|r and DingCam will film your 60 ding with extra time for the celebration.",
+    text = "|cffffd100One level to go!|r\n\nYour level 60 moment deserves the full story.\n\nFor a longer clip, %s.\nThen click |cffffff00Reload UI|r and DingCam will film your 60 ding with extra time for the celebration.",
     button1 = "Reload UI",
     button2 = "Later",
     OnAccept = function() DingCamArmPending = time(); ReloadUI() end,   -- the reload saves DingCamActive, which arms the helper
@@ -140,19 +157,19 @@ StaticPopupDialogs["DINGCAM_ALMOST_60"] = {
 local function almost60()
     RaidNotice_AddMessage(RaidWarningFrame, "DingCam: one level to go! Get ready for 60.", { r = 1, g = 0.82, b = 0 })
     PlaySound(SOUNDKIT and SOUNDKIT.READY_CHECK or 8960)
-    StaticPopup_Show("DINGCAM_ALMOST_60")
+    StaticPopup_Show("DINGCAM_ALMOST_60", recorder().length)
 end
 
--- Warning at login/reload if the PC helper (via Status.lua) reports Instant Replay off or a failed clip.
+-- Warning at login/reload if the PC helper (via Status.lua) reports the recorder off or a failed clip.
 local function warn(text)
-    print("|cffff4040DingCam WARNING:|r " .. text .. " Press Alt+Z > Instant Replay > On, then /reload.")
+    print("|cffff4040DingCam WARNING:|r " .. text .. " To fix: " .. plain(recorder().fix) .. ", then /reload.")
     RaidNotice_AddMessage(RaidWarningFrame, "DingCam: " .. text, ChatTypeInfo["RAID_WARNING"])
     PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959)
 end
 
 -- Classic WoW popup (alert icon) with a Reload UI button.
 StaticPopupDialogs["DINGCAM_WARNING"] = {
-    text = "|cffe6b85cDingCam|r\n\n%s\n\nTo fix: press |cffffff00Alt+Z|r, open |cffffff00Instant Replay|r and turn it |cffffff00On|r.\nThen click |cffffff00Reload UI|r.",
+    text = "|cffe6b85cDingCam|r\n\n%s\n\nTo fix: %s.\nThen click |cffffff00Reload UI|r.",
     button1 = "Reload UI",
     button2 = "Later",
     OnAccept = function() ReloadUI() end,
@@ -192,18 +209,19 @@ local function checkStatus()
         end
         return
     end
+    local rec = recorder()
     if s.replayOff then
         DingCamWarned = true
-        warn("NVIDIA Instant Replay is OFF, so your level-ups will NOT be recorded.")
-        StaticPopup_Show("DINGCAM_WARNING", "|cffff4040NVIDIA Instant Replay is OFF.|r\nYour level-ups will NOT be recorded.")
+        warn(rec.name .. " is OFF, so your level-ups will NOT be recorded.")
+        StaticPopup_Show("DINGCAM_WARNING", "|cffff4040" .. rec.name .. " is OFF.|r\nYour level-ups will NOT be recorded.", rec.fix)
     elseif s.lastFail then
         DingCamWarned = true
         warn("your clip from " .. s.lastFail .. " was NOT saved.")
-        StaticPopup_Show("DINGCAM_WARNING", "|cffff4040Your clip from " .. s.lastFail .. " was NOT saved.|r\nNVIDIA Instant Replay may be off.")
+        StaticPopup_Show("DINGCAM_WARNING", "|cffff4040Your clip from " .. s.lastFail .. " was NOT saved.|r\n" .. rec.name .. " may be off.", rec.fix)
     elseif DingCamWarned then
         DingCamWarned = nil
-        print("|cff40ff40DingCam:|r Instant Replay is on. You're all set, level-ups will be recorded.")
-        RaidNotice_AddMessage(RaidWarningFrame, "DingCam: Instant Replay is on, you're all set.", { r = 0.25, g = 1, b = 0.25 })
+        print("|cff40ff40DingCam:|r " .. rec.name .. " is on. You're all set, level-ups will be recorded.")
+        RaidNotice_AddMessage(RaidWarningFrame, "DingCam: " .. rec.name .. " is on, you're all set.", { r = 0.25, g = 1, b = 0.25 })
     end
     -- At 59: the helper arms the "big moment" for the character it last saw at 59 (DingCamActive, saved on reload/logout).
     -- Armed for us (or we just reloaded from the popup) -> confirm, and nudge if the replay is short. Otherwise ask for a reload.
@@ -215,13 +233,16 @@ local function checkStatus()
             almost60()
             return
         end
-        local len = s.replayLength or 0
+        local len = s.replayLength or 0   -- 0: the recorder doesn't report its length (AMD, OBS)
         if len >= 60 then
             print("|cffffd100DingCam:|r Ready for your level 60 moment. The clip will run " .. len .. " s with extra time after the ding.")
             RaidNotice_AddMessage(RaidWarningFrame, "DingCam is ready for your level 60 moment.", { r = 1, g = 0.82, b = 0 })
+        elseif len > 0 then
+            print("|cffffd100DingCam:|r Ready for 60, but " .. rec.name .. " is only " .. len .. " s. For the full moment, " .. plain(rec.length) .. ".")
+            RaidNotice_AddMessage(RaidWarningFrame, "DingCam: set " .. rec.name .. " to 1 minute for your 60 ding.", { r = 1, g = 0.82, b = 0 })
         else
-            print("|cffffd100DingCam:|r Ready for 60, but Instant Replay is only " .. len .. " s. Set it to 1 minute (Alt+Z > Instant Replay) for the full moment.")
-            RaidNotice_AddMessage(RaidWarningFrame, "DingCam: set Instant Replay to 1 minute for your 60 ding.", { r = 1, g = 0.82, b = 0 })
+            print("|cffffd100DingCam:|r Ready for your level 60 moment. For the full celebration, " .. plain(rec.length) .. ".")
+            RaidNotice_AddMessage(RaidWarningFrame, "DingCam is ready for your level 60 moment.", { r = 1, g = 0.82, b = 0 })
         end
     end
 end
@@ -410,12 +431,13 @@ end)
 
 SLASH_DINGCAM1 = "/dingcam"
 SlashCmdList.DINGCAM = function(msg)
-    if msg == "status" then   -- is the PC helper running, and is NVIDIA Instant Replay on?
+    if msg == "status" then   -- is the PC helper running, and is its recorder on?
         local s = DingCamStatus
         if helperRunning() then
             print("|cffe6b85cDingCam|r: the PC helper (version " .. (s.helperVersion or "?") .. ") is running. Moments are saved as clips.")
-            print("|cffe6b85cDingCam|r: NVIDIA Instant Replay is " .. (s.replayOff and "|cffff4040OFF|r (Alt+Z > Instant Replay > On, then /reload)"
-                  or ("on (" .. (s.replayLength or 0) .. " s)")) .. ".")
+            local rec = recorder()
+            print("|cffe6b85cDingCam|r: recording with " .. rec.name .. ": " .. (s.replayOff and ("|cffff4040OFF|r. To fix: " .. plain(rec.fix) .. ", then /reload")
+                  or ((s.replayLength or 0) > 0 and ("on (" .. s.replayLength .. " s)") or "ready")) .. ".")
             if s.lastFail then print("|cffe6b85cDingCam|r: |cffff4040your clip from " .. s.lastFail .. " was NOT saved.|r") end
         elseif s and s.helperSeen then
             print("|cffe6b85cDingCam|r: |cffff4040the PC helper isn't running|r (last seen " .. SecondsToTime(math.abs(time() - s.helperSeen)) ..
@@ -427,9 +449,9 @@ SlashCmdList.DINGCAM = function(msg)
     elseif msg == "remind" then
         DingCamNoHelperWarn = nil
         print("|cffe6b85cDingCam|r: helper reminders are back on.")
-    elseif msg == "warn" then   -- preview the warning without turning Instant Replay off
-        warn("this is a PREVIEW of the Instant Replay warning.")
-        StaticPopup_Show("DINGCAM_WARNING", "|cffff4040NVIDIA Instant Replay is OFF.|r\nYour level-ups will NOT be recorded.\n(Preview only)")
+    elseif msg == "warn" then   -- preview the warning without turning the recorder off
+        warn("this is a PREVIEW of the recorder warning.")
+        StaticPopup_Show("DINGCAM_WARNING", "|cffff4040" .. recorder().name .. " is OFF.|r\nYour level-ups will NOT be recorded.\n(Preview only)", recorder().fix)
     elseif msg == "dungeon" then   -- simulate winning a roll in a dungeon, using a blue/purple item from your bags
         local GetLink = (C_Container and C_Container.GetContainerItemLink) or GetContainerItemLink
         local GetSlots = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots

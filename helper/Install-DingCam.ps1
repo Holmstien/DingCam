@@ -61,17 +61,34 @@ $c = ((& powershell @checkArgs) -join "`n") | ConvertFrom-Json
 Write-Host "`nYour setup" -ForegroundColor White
 if ($c.WowFolder) { Ok "World of Warcraft: $($c.WowFolder)" }
 else { Warn 'World of Warcraft not found. Open the settings file below, set "WowFolder", then run this installer again.' }
-if (-not $c.Nvidia) {
-    Warn 'NVIDIA app not found. DingCam records clips with NVIDIA Instant Replay, so it needs an NVIDIA graphics card'
-    Info 'and the NVIDIA app (or GeForce Experience). Screenshots still work without it.'
-} elseif ($c.ReplayOn -eq $false) {
-    Warn 'NVIDIA Instant Replay is OFF, so no clips will be saved. Press Alt+Z > Instant Replay > turn it On.'
-} else {
-    Ok "NVIDIA Instant Replay is on ($($c.ReplaySeconds) s)$(if ($c.ReplaySeconds -lt 30) { '. Tip: 30 s or more catches the run-up to the moment.' })"
+switch ($c.Recorder) {
+    'nvidia' {
+        if ($c.ReplayOn -eq $false) { Warn 'Recording with NVIDIA Instant Replay, but it is OFF. Press Alt+Z > Instant Replay > turn it On.' }
+        else { Ok "Recording with NVIDIA Instant Replay$(if ($c.ReplaySeconds) { " ($($c.ReplaySeconds) s)" })$(if ($c.ReplaySeconds -and $c.ReplaySeconds -lt 30) { '. Tip: 30 s or more catches the run-up to the moment.' })" }
+    }
+    'amd' {
+        Ok 'Recording with AMD Instant Replay'
+        Info 'Make sure it is on: AMD Software (Alt+R) > Record & Stream > Instant Replay.'
+    }
+    'obs' {
+        if ($c.ObsError) { Warn "Recording with OBS, but DingCam can't reach it: $($c.ObsError)"; Info 'In OBS: Tools > WebSocket Server Settings > Enable WebSocket server. Keep OBS open while you play.' }
+        elseif ($c.ReplayOn) { Ok 'Recording with the OBS Replay Buffer (running)' }
+        else { Warn 'Recording with OBS, but its Replay Buffer is off. In OBS, click "Start Replay Buffer".' }
+    }
+    default {
+        Warn 'No recorder found. DingCam saves clips with NVIDIA or AMD Instant Replay, or with OBS (Replay Buffer).'
+        Info 'Screenshots still work without one.'
+    }
 }
-if ($c.SaveHotkey -eq 'none') { Warn 'SaveHotkey is set to "none" in the settings file, so no clips will be saved.' }
-else { Ok "Save-clip hotkey: $($c.SaveHotkey)" }
-Ok "NVIDIA saves clips in: $($c.ClipFolder)"
+if ($c.Recorder -in 'nvidia', 'amd') {
+    if ($c.SaveHotkey -eq 'none') { Warn 'SaveHotkey is set to "none" in the settings file, so no clips will be saved.' }
+    else { Ok "Save-clip hotkey: $($c.SaveHotkey)" }
+    Ok "Clips are saved in: $($c.ClipFolder)"
+}
+if ($c.Recorder -ne 'obs' -and $c.ObsInstalled -and -not $c.RecorderFromSettings) {
+    Info 'Tip: you have OBS. To record with it instead, turn on its WebSocket server (Tools > WebSocket Server Settings)'
+    Info 'and start its Replay Buffer; DingCam then uses OBS automatically whenever it is open.'
+}
 if (@($c.AddonIn).Count) { Ok "DingCam addon found in: $(@($c.AddonIn) -join ', ')" }
 else { Warn 'The DingCam addon is not installed yet. Get it from CurseForge (search "DingCam"), or copy the "addon\DingCam"'; Info 'folder from this download into  World of Warcraft\<your game>\Interface\AddOns' }
 
