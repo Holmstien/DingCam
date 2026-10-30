@@ -31,6 +31,7 @@ DingCam Journey\
 | **Rare kill** | A clip and a screenshot, for rares that die while tagged to you. |
 | **Epic and rare loot** | The item's tooltip flashes mid-screen for a split second and is screenshotted. This covers blue and purple Bind-on-Equip drops in the world, and any blue or purple you receive in a dungeon or raid. |
 | **New zone** | A screenshot the first time each character enters a zone. |
+| **Your gear** | A screenshot of your character panel at level 1 and every 10 levels, taken once you're out of combat. |
 
 Your own screenshots (Print Screen) are never moved, renamed or deleted.
 
@@ -75,6 +76,7 @@ Windows may warn about running a downloaded script. The helper is plain PowerShe
 | `/dingcam boss` / `rare` | Test a boss or rare kill clip |
 | `/dingcam loot` | Test the loot flash with your equipped weapon |
 | `/dingcam zone` | Retake the first-visit shot for this zone |
+| `/dingcam gear` | Test the gear snapshot |
 | `/dingcam warn` | Preview the "recorder is off" warning |
 | `/dingcam remind` | Turn helper reminders back on, if you clicked "Don't remind me" |
 

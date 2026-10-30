@@ -141,6 +141,7 @@ $lootRoot    = Join-Path $journey 'Loot'
 $bossRoot    = Join-Path $journey 'Bosses'
 $rareRoot    = Join-Path $journey 'Rares'
 $zoneRoot    = Join-Path $journey 'Zones'
+$gearRoot    = Join-Path $journey 'Gear'        # character panel at level 1 and every 10 levels
 $momentRoot  = Join-Path $journey 'Moments'       # DingCam Extras: Clip that!, first mount, clutch survivals
 $flightRoot  = Join-Path $journey 'Flight paths'
 $profRoot    = Join-Path $journey 'Professions'
@@ -582,13 +583,17 @@ function File-Pending {
 function File-Copies {
     $shots = @(Get-ChildItem "$wow\_*_\Screenshots\*.jpg" -File -ErrorAction SilentlyContinue | ? { -not $script:bannerSources.ContainsKey($_.FullName) })
     if (-not $shots) { return }
-    $todo = @(@(Get-SvEntries 'DingCamLoot' | % { $_.Kind = 'loot'; $_ }) + @(Get-SvEntries 'DingCamZones' | % { $_.Kind = 'zone'; $_ })) | Sort When
+    $todo = @(@(Get-SvEntries 'DingCamLoot' | % { $_.Kind = 'loot'; $_ }) + @(Get-SvEntries 'DingCamZones' | % { $_.Kind = 'zone'; $_ }) +
+              @(Get-SvEntries 'DingCamGear' | % { $_.Kind = 'gear'; $_ })) | Sort When
     $used = @{}
     foreach ($e in $todo) {
         $test = if ($e.Test) { 'TEST ' } else { '' }
         if ($e.Kind -eq 'loot') {
             $dir = Join-Path $lootRoot (Clean $e.Char)
             $name = "{0}{1} - {2} - {3:yyyy-MM-dd HH-mm-ss}.jpg" -f $test, $e.Item, $e.Zone, $e.When
+        } elseif ($e.Kind -eq 'gear') {
+            $dir = Join-Path $gearRoot (Clean $e.Char)
+            $name = "{0}Level {1:D2} - {2:yyyy-MM-dd HH-mm}.jpg" -f $test, [int]$e.Level, $e.When
         } else {
             $dir = Join-Path $zoneRoot (Clean $e.Char)
             $name = "{0} - Level {1:D2} - {2:yyyy-MM-dd HH-mm}.jpg" -f $e.Zone, [int]$e.Level, $e.When
@@ -603,7 +608,7 @@ function File-Copies {
         if (Test-Path $dest) { continue }
         New-Item -ItemType Directory -Force $dir | Out-Null
         Copy-Item $shot.FullName $dest
-        Log "$(if ($e.Kind -eq 'loot') { 'Loot' } else { 'Zone' }) shot filed: $($shot.Name) -> $dest"
+        Log "$($e.Kind) shot filed: $($shot.Name) -> $dest"
     }
 }
 

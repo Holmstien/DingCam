@@ -5,7 +5,7 @@
 -- DingCamEvents, first zone visits in DingCamZones, loot in DingCamLoot, so the helper can
 -- file everything per character after you log out or /reload.
 -- Without the helper, moments are saved as normal screenshots (no clips) and you're told how to get it.
--- Commands: /dingcam status | test | loot | dungeon | zone | boss | rare | 59 | warn | remind | clearloot
+-- Commands: /dingcam status | test | gear | loot | dungeon | zone | boss | rare | 59 | warn | remind | clearloot
 
 local GLOW_DELAY = 0.5   -- seconds after the ding for the glow screenshot (the golden column is fully up by then)
 local BANNER_DELAY = 5 -- seconds after the ding for the banner screenshot
@@ -368,6 +368,39 @@ local function onLoot(msg, retried)
     if boe or dungeon then lootShot(link or itemString, simDungeon or nil) end
 end
 
+-- Gear snapshots: at level 1 and every 10 levels, once you're out of combat, the character panel opens just long enough
+-- to be screenshotted (normal format), then closes as soon as WoW reports the shot saved. Logged in DingCamGear; the
+-- helper files the picture under Gear\<Character> at logout or /reload.
+local GEAR_EVERY = 10
+local GEAR_DELAY = BANNER_DELAY + 1.5   -- seconds after a ding: after the banner shot, so they never collide
+local gearWaiting, gearOpened, gearShooting, gearTimer
+
+local function gearDone()
+    if not gearShooting then return end
+    gearShooting = false
+    if gearTimer then gearTimer:Cancel(); gearTimer = nil end
+    if gearOpened and CharacterFrame:IsShown() then ToggleCharacter("PaperDollFrame") end
+    gearOpened = false
+end
+
+local function gearShot(level, isTest)
+    if InCombatLockdown() then gearWaiting = { level, isTest }; return end   -- PLAYER_REGEN_ENABLED picks it up
+    if lootBusy or savedFormat or gearShooting or (InCinematic and InCinematic()) then
+        C_Timer.After(0.5, function() gearShot(level, isTest) end)
+        return
+    end
+    gearOpened = not CharacterFrame:IsShown()
+    if gearOpened then ToggleCharacter("PaperDollFrame") end
+    C_Timer.After(0.3, function()   -- lets the panel draw
+        normalShot(function()
+            DingCamGear = DingCamGear or {}
+            table.insert(DingCamGear, { level = level, time = time(), char = UnitName("player"), test = isTest or nil })
+            gearShooting = true
+            gearTimer = C_Timer.NewTimer(2, gearDone)
+        end)
+    end)
+end
+
 local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_LEVEL_UP")
 f:RegisterEvent("CHAT_MSG_LOOT")
@@ -383,6 +416,7 @@ f:RegisterEvent("PLAYER_TARGET_CHANGED")
 f:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 f:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 f:RegisterEvent("UNIT_HEALTH")   -- not the combat log: this client forbids addons from registering for it
+f:RegisterEvent("PLAYER_REGEN_ENABLED")
 local firstEnter = true
 f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
     if event == "UNIT_HEALTH" then   -- a rare we're watching (target or nameplate) just died while tagged to us
@@ -397,7 +431,14 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
     elseif event == "PLAYER_LEVEL_UP" then
         signal(level)
         DingCamActive = { char = UnitName("player"), level = level }
+        if level % GEAR_EVERY == 0 then C_Timer.After(GEAR_DELAY, function() gearShot(level) end) end
         if level == 59 and helperRunning() then C_Timer.After(BANNER_DELAY + 2, almost60) end   -- after the banner shot, so it never covers it
+    elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight
+        if gearWaiting then
+            local g = gearWaiting
+            gearWaiting = nil
+            C_Timer.After(1.5, function() gearShot(g[1], g[2]) end)
+        end
     elseif event == "TIME_PLAYED_MSG" then
         playedBase, playedAt = level, GetTime()   -- first arg is total time played (seconds)
     elseif event == "ENCOUNTER_END" then
@@ -417,6 +458,11 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
             C_Timer.After(8, checkStatus)   -- after the login spam, so it's noticed
             C_Timer.After(5, function() if not playedBase then RequestTimePlayed() end end)   -- once per login, only if nothing else asked
             zoneCheck(3)                    -- a brand-new character's first zone (after the loading screen)
+            DingCamCharDB = DingCamCharDB or {}
+            if UnitLevel("player") == 1 and not DingCamCharDB.gearStart then   -- starting gear, once per character
+                DingCamCharDB.gearStart = true
+                C_Timer.After(12, function() gearShot(1) end)   -- after the login messages and the zone shot
+            end
         else
             zoneCheck()                     -- arriving somewhere new through a loading screen (dungeons, boats)
         end
@@ -426,6 +472,7 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
             savedFormat = nil
         end
         lootDone()
+        gearDone()
     end
 end)
 
@@ -472,6 +519,9 @@ SlashCmdList.DINGCAM = function(msg)
             onLoot(LOOT_ITEM_SELF:format(found))   -- the exact message WoW sends when you win or loot an item
             C_Timer.After(2, function() simDungeon = false end)
         end
+    elseif msg == "gear" then   -- test the gear snapshot
+        print("|cffe6b85cDingCam|r: test gear snapshot" .. (InCombatLockdown() and " after this fight." or " now."))
+        gearShot(UnitLevel("player"), true)
     elseif msg == "zone" then   -- re-take the first-visit shot for the zone you're in
         local zone = GetRealZoneText()
         if DingCamCharDB and DingCamCharDB.zones then DingCamCharDB.zones[zone] = nil end
