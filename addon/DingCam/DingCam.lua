@@ -202,13 +202,18 @@ StaticPopupDialogs["DINGCAM_NO_HELPER"] = {
 local function checkStatus()
     local s = DingCamStatus
     if not helperRunning() then
-        if not DingCamNoHelperWarn then
+        -- Never seen the helper on this account: maybe they chose screenshots only, so tell them about clips ONCE and
+        -- then stay quiet (/dingcam status still explains). If the helper has run here before, it has stopped and their
+        -- clips are being lost, so warn at every login until it's back or they click "Don't remind me".
+        if not DingCamNoHelperWarn and (DingCamHelperSeen or not DingCamHelperIntro) then
+            DingCamHelperIntro = true
             print("|cffff4040DingCam:|r the PC helper isn't running, so moments are saved as screenshots only (no clips). " ..
                   "Get it at " .. HELPER_URL .. ", or type /dingcam status.")
             StaticPopup_Show("DINGCAM_NO_HELPER", HELPER_URL)
         end
         return
     end
+    DingCamHelperSeen = true
     local rec = recorder()
     if s.replayOff then
         DingCamWarned = true

@@ -393,8 +393,18 @@ function Save-Clip($dingTime) {
     }
     $fix = Get-FixText $rec
     Log "No clip was saved ($(Get-RecName $rec)). $fix"
-    $script:lastFail = '{0:MMM d, h:mm tt}' -f $dingTime; Update-Status
-    Notify 'DingCam: clip NOT saved' "$(Get-RecName $rec) looks off. $fix"
+    $script:lastFail = '{0:MMM d, h:mm tt}' -f $dingTime
+    $wasOff = $false
+    if ($rec -eq 'nvidia') {   # NVIDIA may have switched Instant Replay off by itself: turn it back on for the next moment
+        Read-ReplayState; $wasOff = ($script:irActual -eq $false)
+        $script:irLastTry = [datetime]::MinValue; Ensure-Replay
+    }
+    Update-Status
+    if ($wasOff -and $script:irActual) {
+        Notify 'DingCam: clip NOT saved' 'NVIDIA Instant Replay had switched itself off. DingCam turned it back on, so the next clip will save.'
+    } else {
+        Notify 'DingCam: clip NOT saved' "$(Get-RecName $rec) looks off. $fix"
+    }
 }
 
 function Notify($title, $text) {
@@ -450,6 +460,7 @@ function Update-Status {
     }
     if ($rec -eq 'nvidia') {
         try { $v = (Get-Content $nvSettings -Raw | ConvertFrom-Json).settings.video; $on = [bool]$v.irEnabled; $len = [int]$v.irBufferLength } catch { }
+        if ($script:irActual -eq $false -and $script:irTries -ge 3) { $on = $false }   # NVIDIA's setting says on, but it's off and DingCam couldn't fix it
     }
     $seen = [Math]::Floor([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() / 60) * 60   # to the minute, so the file changes at most once a minute
     $lua = "-- Written by the DingCam helper on your PC. Do not edit.`r`nDingCamStatus = {{ replayOff = {0}, lastFail = {1}, bigMoment = {2}, bigMomentChar = `"{4}`", replayLength = {3}, helperVersion = `"{5}`", helperSeen = {6}, recorder = `"{7}`" }}`r`n" -f `
@@ -465,6 +476,59 @@ function Update-Status {
     $script:replayWasOn = ($on -ne $false)
 }
 $script:replayWasOn = $true
+
+# NVIDIA can forget Instant Replay when its background service restarts (a driver or NVIDIA app update): it comes back
+# OFF while its saved setting (ShareSettings.json irEnabled) still says on, so clips silently fail. The NVIDIA overlay's
+# own log shows the real state ("IR Enabled" / "IR Disabled", and its status at startup). When the setting says on but
+# the log says off, DingCam presses NVIDIA's Instant Replay shortcut once (Alt+Shift+F10 unless you changed it) and checks
+# the log confirms it. If you turned Instant Replay off yourself, the setting says off too, and DingCam leaves it alone.
+$nvLog = "$env:LOCALAPPDATA\NVIDIA Corporation\NVIDIA Overlay\console.log"
+$script:nvLogPos = 0; $script:irTail = ''; $script:irActual = $null   # $true on, $false off, $null unknown
+$script:irLastTry = [datetime]::MinValue; $script:irTries = 0
+function Read-ReplayState {
+    if (-not (Test-Path $nvLog)) { $script:irActual = $null; return }
+    $text = $null
+    try {
+        $fs = [IO.File]::Open($nvLog, 'Open', 'Read', 'ReadWrite, Delete')
+        try {
+            if ($fs.Length -lt $script:nvLogPos) { $script:nvLogPos = 0; $script:irTail = ''; $script:irActual = $null; $script:irTries = 0 }   # new log: NVIDIA restarted
+            if ($fs.Length -gt $script:nvLogPos) {
+                [void]$fs.Seek($script:nvLogPos, 'Begin')
+                $text = $script:irTail + (New-Object IO.StreamReader($fs)).ReadToEnd()
+                $script:nvLogPos = $fs.Length
+            }
+        } finally { $fs.Close() }
+    } catch { return }
+    if (-not $text) { return }
+    $ms = [regex]::Matches($text, 'ShadowPlayService\s+IR (Enabled|Started|Disabled)\b|GetInstantReplayEnableStatus returns:\s*\{\s*"status":\s*(true|false)|instant replay was disabled')
+    if ($ms.Count) { $script:irActual = -not ($ms[$ms.Count - 1].Value -match 'Disabled|false|was disabled') }   # the newest one wins
+    $script:irTail = if ($text.Length -gt 400) { $text.Substring($text.Length - 400) } else { $text }   # a status block cut in half
+}
+function Ensure-Replay {
+    if ($cfg.Recorder -and ([string]$cfg.Recorder).ToLower() -ne 'nvidia') { return }   # you chose another recorder
+    Read-ReplayState
+    if ($script:irActual -ne $false) { return }   # on, or unknown (no NVIDIA app log): do nothing
+    $pref = $null; $keys = @(0x12, 0x10, 0x79)   # Alt+Shift+F10, NVIDIA's default Instant Replay shortcut
+    try {
+        $j = Get-Content $nvSettings -Raw | ConvertFrom-Json; $pref = $j.settings.video.irEnabled
+        if (@($j.settings.shortcuts.DVRToggle).Count -ge 2) { $keys = @($j.settings.shortcuts.DVRToggle | % { [int]$_ }) }
+    } catch { }
+    if ($pref -ne $true) { return }   # you switched it off yourself
+    $ov = Get-Process 'NVIDIA Overlay' -ErrorAction SilentlyContinue | Sort StartTime | Select -First 1
+    if (-not $ov -or ((Get-Date) - $ov.StartTime).TotalSeconds -lt 20) { return }   # NVIDIA is still starting up
+    if ($script:irTries -ge 3 -or ((Get-Date) - $script:irLastTry).TotalMinutes -lt 5) { return }
+    $script:irLastTry = Get-Date; $script:irTries++
+    Send-Keys $keys
+    Start-Sleep -Seconds 3
+    Read-ReplayState
+    if ($script:irActual) {
+        $script:irTries = 0
+        Log "NVIDIA Instant Replay was off although NVIDIA's setting says on (NVIDIA restarted?). Turned it back on with $(Format-Hotkey $keys)."
+    } else {
+        Log "Tried to turn NVIDIA Instant Replay back on (try $($script:irTries) of 3), but NVIDIA's log doesn't confirm it."
+        if ($script:irTries -ge 3) { Notify 'DingCam: NVIDIA Instant Replay is OFF' 'DingCam could not turn it back on. Press Alt+Z and turn Instant Replay on.' }
+    }
+}
 
 # Reads one table (DingCamDB, DingCamEvents, DingCamLoot, DingCamZones; DingCamExtras from DingCamExtras.lua)
 # from the addons' SavedVariables.
@@ -637,6 +701,7 @@ if ($Once) { Save-Clip (Get-Date); File-Pending; exit }
 $startRec = Get-Recorder
 Log "DingCam helper $Version started. WoW: $wow | Recorder: $(Get-RecName $startRec)$(if ($startRec -ne 'obs') { " (clips in $(Get-ClipFolder $startRec), save keys $(Format-Hotkey (Get-SaveKeys $startRec)))" }) | Journey: $journey"
 Update-BigMoment
+Ensure-Replay
 Update-Status
 $seen = @{}
 foreach ($d in Get-ChildItem "$wow\_*_\Screenshots" -Directory -ErrorAction SilentlyContinue) { foreach ($p in [IO.Directory]::GetFiles($d.FullName)) { $seen[$p] = 1 } }
@@ -673,7 +738,7 @@ while ($true) {
         if ($lastNvStamp) { $script:lastFail = $null }   # NVIDIA settings changed: clear the old "clip not saved" warning
         $lastNvStamp = $nvStamp; Update-Status
     }
-    if (($now - $lastSvCheck).TotalSeconds -ge 30) { $lastSvCheck = $now; Update-Status }
+    if (($now - $lastSvCheck).TotalSeconds -ge 30) { $lastSvCheck = $now; Ensure-Replay; Update-Status }
     # SavedVariables written (logout or /reload)? File everything and re-check the level 60 arming within ~2 s.
     if (($now - $lastSvPoll).TotalSeconds -ge 2) {
         $lastSvPoll = $now
