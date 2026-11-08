@@ -1,10 +1,11 @@
 # DingCam installer: copies the helper to %LOCALAPPDATA%\DingCam\app, starts it now and every time you sign in to
-# Windows, then checks your setup. No admin rights needed. Run it again any time to update or repair: your settings
-# and your Journey folder are kept.
+# Windows, checks every 15 minutes that it's still running (restarting it if not), then checks your setup.
+# No admin rights needed. Run it again any time to update or repair: your settings and your Journey folder are kept.
 param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'DingCam\app'),
     [string]$Settings,                                                       # testing: a settings file for the helper
-    [string]$RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'  # testing: another key, so Windows startup isn't touched
+    [string]$RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run', # testing: another key, so Windows startup isn't touched
+    [string]$TaskName = 'DingCam helper'                                     # testing: another task name
 )
 $ErrorActionPreference = 'Stop'
 
@@ -47,6 +48,34 @@ if (-not (Test-Path $RunKey)) { New-Item $RunKey -Force | Out-Null }
 Set-ItemProperty -Path $RunKey -Name 'DingCam' -Value ('"{0}\System32\wscript.exe" "{1}"' -f $env:SystemRoot, $vbs)
 Ok "$(if ($updating) { 'Updated' } else { 'Installed' }) to $InstallDir"
 Ok 'Starts automatically when you sign in to Windows (Task Manager > Startup apps lists it as "wscript")'
+
+# 2b. Every 15 minutes while you're signed in, run the same launcher. If the helper has stopped for any reason, this
+# starts it again; if it's running, the extra copy exits at once (the helper allows only one of itself).
+$start = (Get-Date).AddMinutes(1).ToString('yyyy-MM-ddTHH:mm:ss')
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$esc = { param($s) [Security.SecurityElement]::Escape($s) }
+$taskXml = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>$(& $esc "Keeps the DingCam helper running: every 15 minutes, starts it again if it has stopped. Installed by Install DingCam; removed by Uninstall DingCam.")</Description></RegistrationInfo>
+  <Principals><Principal id="Author"><UserId>$sid</UserId><LogonType>InteractiveToken</LogonType></Principal></Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <StartWhenAvailable>true</StartWhenAvailable>
+  </Settings>
+  <Triggers><TimeTrigger><StartBoundary>$start</StartBoundary><Repetition><Interval>PT15M</Interval></Repetition></TimeTrigger></Triggers>
+  <Actions Context="Author"><Exec><Command>$(& $esc "$env:SystemRoot\System32\wscript.exe")</Command><Arguments>$(& $esc "//B //Nologo `"$vbs`"")</Arguments></Exec></Actions>
+</Task>
+"@
+try {
+    Register-ScheduledTask -TaskName $TaskName -Xml $taskXml -Force -ErrorAction Stop | Out-Null
+    Ok 'Checks every 15 minutes that it is still running, and starts it again if not'
+} catch {
+    Warn "Couldn't set up the 15-minute check ($($_.Exception.Message)). The helper still starts when you sign in."
+}
 
 # 3. Start it now and make sure it's running.
 Start-Process "$env:SystemRoot\System32\wscript.exe" -ArgumentList "`"$vbs`""

@@ -68,7 +68,7 @@ DingCam picks the recorder for you: OBS while it's open with its Replay Buffer r
 1. **Addon:** install **DingCam** from CurseForge, or copy the `addon\DingCam` folder from the download into `World of Warcraft\_forever_\Interface\AddOns`.
 2. **Helper:** download the latest release from the [Releases page](https://github.com/Holmstien/DingCam/releases), unzip it, and double-click **`Install DingCam`**. No admin rights are needed. It:
    - installs the helper for your Windows account,
-   - sets it to start when you sign in,
+   - sets it to start when you sign in, and checks every 15 minutes that it's still running (starting it again if it ever stops),
    - finds your WoW folder and your recorder (NVIDIA, AMD or OBS) on its own,
    - and shows a short report of anything you need to fix.
 3. **Check in game:** type `/dingcam status`, then `/dingcam test` to save a test clip. After a `/reload`, it appears in `Videos\DingCam Journey`.
@@ -113,7 +113,7 @@ Download the latest release and double-click **`Install DingCam`** again. It sto
 
 ## Uninstall
 
-Double-click **`Uninstall DingCam`**. It stops the helper and removes it from startup. Your Journey folder is never touched. Remove the addon in CurseForge or by deleting its folder.
+Double-click **`Uninstall DingCam`**. It stops the helper and removes it from startup and the 15-minute check. Your Journey folder is never touched. Remove the addon in CurseForge or by deleting its folder.
 
 ## FAQ
 

@@ -3,6 +3,7 @@
 param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'DingCam\app'),
     [string]$RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run',   # testing: another key
+    [string]$TaskName = 'DingCam helper',                                      # testing: another task name
     [switch]$RemoveSettings
 )
 
@@ -16,7 +17,12 @@ foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force -ErrorAction Silen
 Ok $(if ($procs.Count) { 'Helper stopped' } else { 'Helper was not running' })
 
 if ((Get-ItemProperty $RunKey -ErrorAction SilentlyContinue).DingCam) { Remove-ItemProperty $RunKey -Name 'DingCam' }
-Ok 'Removed from Windows startup'
+# The 15-minute "keep it running" task, only if it really runs DingCam's launcher.
+$task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($task -and (@($task.Actions | ? { $_.Arguments -like '*Start-DingCam.vbs*' }).Count)) {
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+}
+Ok 'Removed from Windows startup and the 15-minute check'
 
 # Only delete a folder that really is a DingCam install (guards against a mistyped -InstallDir).
 if ((Test-Path (Join-Path $InstallDir 'DingCam-Helper.ps1')) -or (Test-Path (Join-Path $InstallDir 'Start-DingCam.vbs'))) {
