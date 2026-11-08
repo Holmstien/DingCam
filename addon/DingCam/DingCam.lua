@@ -21,11 +21,16 @@ local savedFormat   -- the player's screenshot format, restored right after our 
 local HELPER_URL = "github.com/Holmstien/DingCam"   -- where the PC helper is downloaded
 local HELPER_STALE = 300   -- seconds: the helper checks in about once a minute, so older than this means it isn't running
 
--- Is the PC helper running? It rewrites Status.lua (DingCamStatus.helperSeen) while it runs; WoW reads that file once,
--- at login or /reload.
-local function helperRunning()
+-- Is the PC helper running? It rewrites Status.lua (DingCamStatus.helperSeen) about once a minute while it runs, but WoW
+-- reads that file only once, at login or /reload (just before this file loads). So the check is made once, now, and
+-- kept for the whole session. (Until 1.3.0 it was re-checked at every moment against that frozen time, so 5 minutes
+-- after login the helper looked stopped and moments got plain screenshots instead of clips.)
+local helperUp = (function()
     local s = DingCamStatus
     return (s and s.helperSeen and math.abs(time() - s.helperSeen) < HELPER_STALE) and true or false
+end)()
+local function helperRunning()
+    return helperUp
 end
 ns.helperRunning = helperRunning
 
@@ -556,7 +561,11 @@ end)
 SLASH_DINGCAM1 = "/dingcam"
 SlashCmdList.DINGCAM = function(msg)
     msg = ((msg or ""):lower():match("^%s*(.-)%s*$")) or ""
-    if (msg == "" or msg == "options" or msg == "settings" or msg == "config") and ns.toggleOptions then   -- the settings window
+    if msg == "" then   -- the same line as always, plus the settings window
+        print("|cffe6b85cDingCam|r: active" .. (helperRunning() and "" or " (screenshots only: the PC helper isn't running)") ..
+              ". /dingcam test saves a test moment, /dingcam status checks the PC helper, /dingcam recap shows this session.")
+        if ns.toggleOptions then ns.toggleOptions() end
+    elseif (msg == "options" or msg == "settings" or msg == "config") and ns.toggleOptions then   -- the settings window
         ns.toggleOptions()
     elseif (msg == "recap" or msg == "recap on" or msg == "recap off" or msg == "diary") and ns.recapCommand then   -- Recap.lua
         ns.recapCommand(msg)

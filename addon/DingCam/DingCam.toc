@@ -2,7 +2,7 @@
 ## Title: DingCam
 ## Notes: Records your journey: level-up clips and shots (with /played), boss and rare kill clips, first zone visits and loot, plus a recap of each play session. Every feature can be switched off (/dingcam).
 ## Author: Holmstein (built with Claude)
-## Version: 1.3.0
+## Version: 1.3.1
 ## IconTexture: Interface\AddOns\DingCam\Icon
 ## AddonCompartmentFunc: DingCam_OnAddonCompartmentClick
 ## SavedVariables: DingCamDB, DingCamWarned, DingCamLoot, DingCamEvents, DingCamZones, DingCamActive, DingCamArmPending, DingCamNoHelperWarn, DingCamGear, DingCamHelperSeen, DingCamHelperIntro, DingCamHelperUpdateSeen, DingCamOptions, DingCamDiary
