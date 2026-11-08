@@ -130,27 +130,28 @@ local function buildFrame()
     frame = f
 end
 
-local function show()
-    if not S then return end
-    noteZoneTime()
-    S.last = time()
+-- Fills and opens the window for session s. isLast: a session that already ended (shown at the next login), so its
+-- gold is what it ended with rather than what you have now.
+local function fill(s, isLast)
     if not frame then buildFrame() end
-    frame.title:SetText(S.char .. " · " .. date("%b %d", S.start))
+    frame.title:SetText((isLast and "Last session: " or "") .. (s.char or "?") .. " · " .. date("%b %d", s.start))
+    local nowMoney = isLast and (s.endMoney or s.lastMoney or s.startMoney or 0) or GetMoney()
+    local level, startLevel = s.level or 0, s.startLevel or 0
     local values = {
-        duration(S.last - S.start) .. (S.played and ("  (" .. played(S.played) .. " total)") or ""),
-        (S.level > S.startLevel) and (S.startLevel .. " → " .. S.level) or tostring(S.level),
-        tostring(S.xp) .. " XP",
-        money(GetMoney() - S.startMoney, true),
-        money(S.looted),
-        money(S.questMoney),
-        money(S.sold),
-        money(S.spent),
-        tostring(S.quests),
-        S.bestLoot or "-",
-        tostring(S.newZones),
-        S.bosses .. " / " .. S.rares,
-        tostring(S.deaths),
-        mainZone(S),
+        duration((s.last or s.start) - s.start) .. (s.played and ("  (" .. played(s.played) .. " total)") or ""),
+        (level > startLevel) and (startLevel .. " → " .. level) or tostring(level),
+        tostring(s.xp or 0) .. " XP",
+        money(nowMoney - (s.startMoney or 0), true),
+        money(s.looted),
+        money(s.questMoney),
+        money(s.sold),
+        money(s.spent),
+        tostring(s.quests or 0),
+        s.bestLoot or "-",
+        tostring(s.newZones or 0),
+        (s.bosses or 0) .. " / " .. (s.rares or 0),
+        tostring(s.deaths or 0),
+        mainZone(s),
     }
     for i, v in ipairs(values) do rowValues[i]:SetText(v) end
     footer:SetText("/dingcam diary shows your past sessions\n" ..
@@ -158,6 +159,14 @@ local function show()
          or "/dingcam recap on opens this when you log out"))
     frame:Show()
     if frame.Raise then frame:Raise() end   -- above the settings window when opened from there
+end
+
+-- This session, as it stands now.
+local function show()
+    if not S then return end
+    noteZoneTime()
+    S.last = time()
+    fill(S, false)
 end
 
 -- ---------- tracking ----------
@@ -259,8 +268,17 @@ f:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
                 end
             end
             if isLogin or not DingCamRecap or DingCamRecap.char ~= UnitName("player") then
-                finish(DingCamRecap)   -- the previous session ends here
+                local prev = DingCamRecap
+                finish(prev)           -- the previous session ends here
                 newSession()
+                -- Logging out in an inn or a city is instant, so the window never got a chance to open (shownAt is set
+                -- when it opens at logout; playing on for over a minute after that counts as not seen). Show that
+                -- session now instead, once the login messages have passed.
+                if prev and prev.start and prev.char == UnitName("player") and opt("recap") and opt("recapPopup")
+                        and (prev.last or prev.start) - prev.start >= 60
+                        and (not prev.shownAt or (prev.last or prev.shownAt) - prev.shownAt > 60) then
+                    C_Timer.After(6, function() fill(prev, true) end)
+                end
             else
                 S = DingCamRecap       -- a /reload: same session continues
             end
@@ -293,7 +311,7 @@ f:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
     elseif event == "BOSS_KILL" then onBoss(a2)
     elseif event == "TIME_PLAYED_MSG" then S.played = a1
     elseif event == "PLAYER_CAMPING" or event == "PLAYER_QUITING" then
-        if opt("recap") and opt("recapPopup") then show() end
+        if opt("recap") and opt("recapPopup") then show(); S.shownAt = time() end
     elseif event == "PLAYER_LOGOUT" then noteZoneTime()
     end
 end)

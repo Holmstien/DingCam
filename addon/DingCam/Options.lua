@@ -159,8 +159,9 @@ function DingCam_OnAddonCompartmentClick()
 end
 
 -- ---------- the minimap button ----------
--- The DingCam camera bubble (Icon.tga, round with its own gold ring) as a 31 px button on the minimap's edge, the
--- same size and spot as other add-ons' buttons. Drag it around the ring; the angle is saved in DingCamOptions.
+-- Laid out exactly like other add-ons' minimap buttons (LibDBIcon's classic layout) so it matches them: a 31 px button,
+-- WoW's own tracking ring at its top left, a dark disc and a 17 px icon (MinimapIcon.tga: the camera from the DingCam
+-- bubble, without the bubble's own gold ring). Drag it around the ring; the angle is saved in DingCamOptions.
 local SHAPES = {   -- which quarters of the minimap are round (1 bottom right, 2 bottom left, 3 top right, 4 top left)
     ["ROUND"] = { true, true, true, true }, ["SQUARE"] = { false, false, false, false },
     ["CORNER-TOPLEFT"] = { false, false, false, true }, ["CORNER-TOPRIGHT"] = { false, false, true, false },
@@ -211,17 +212,23 @@ function ns.minimapButton()
     mini:SetSize(31, 31)
     mini:SetFrameStrata("MEDIUM")
     mini:SetFrameLevel(8)
+    local disc = mini:CreateTexture(nil, "BACKGROUND")
+    disc:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    disc:SetSize(20, 20)
+    disc:SetPoint("TOPLEFT", 7, -5)
     local icon = mini:CreateTexture(nil, "ARTWORK")
-    icon:SetTexture("Interface\\AddOns\\DingCam\\Icon")
-    icon:SetAllPoints()
-    local function crop(down)   -- pressed, the picture sinks one pixel (a slight push)
-        icon:ClearAllPoints()
-        if down then
-            icon:SetPoint("TOPLEFT", 1, -1); icon:SetPoint("BOTTOMRIGHT", 1, -1)
-        else
-            icon:SetAllPoints()
-        end
+    icon:SetTexture("Interface\\AddOns\\DingCam\\MinimapIcon")
+    icon:SetSize(17, 17)
+    icon:SetPoint("TOPLEFT", 7, -6)
+    local function crop(down)   -- trim the square edge; pressed, it shows whole (a slight push), like LibDBIcon
+        local d = down and 0 or 0.05
+        icon:SetTexCoord(d, 1 - d, d, 1 - d)
     end
+    crop(false)
+    local border = mini:CreateTexture(nil, "OVERLAY")
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    border:SetSize(53, 53)
+    border:SetPoint("TOPLEFT")
     mini:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
     place()
     if Minimap.HookScript then Minimap:HookScript("OnSizeChanged", place) end
