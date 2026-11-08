@@ -21,6 +21,13 @@ DingCam Journey\
   Zones\Grimbold\Durotar - Level 05 - 2026-11-04 18-22.jpg
 ```
 
+## New in 1.3.0
+
+- **Session Recap.** When you log out, a window shows what that play session added up to: time played, levels, XP, gold (looted, quest rewards, sold, spent), quests completed, best loot, new zones, bosses, rares, deaths and the zone you spent most time in. Each session also becomes one line in a diary per character (`/dingcam diary` shows the last five). `/dingcam recap` shows the current session any time. A `/reload` doesn't end a session; logging out, quitting or a crash does, and the diary line is written when you next log in. With the helper, the diary is also saved as `Diary\<Character>.txt` in your Journey folder.
+- **An on/off switch for every feature.** Type `/dingcam` (or click the minimap button) for the settings window. Level-up clip, glow screenshot and banner; the longer level 60 clip; boss and rare clips and screenshots; loot in the world and in dungeons; new zones; gear at level 1 and every 10 levels; the Session Recap and whether it opens at logout; each reminder; asking for /played at login; and the minimap button itself. Everything starts on, and changes apply right away.
+- **A minimap button.** Left-click for the settings, right-click for the Session Recap, drag to move it.
+- **Update the helper too** (download it and run `Install DingCam` again) to get everything: helper 1.3.0 is needed for the clip and screenshot switches to work fully (with an older helper, a moment whose clip you switched off keeps its screenshots in WoW's Screenshots folder unsorted) and to save the diary as a file. The addon tells you once in chat if your helper is older.
+
 ## What it captures
 
 | Moment | What you get |
@@ -32,8 +39,9 @@ DingCam Journey\
 | **Epic and rare loot** | The item's tooltip flashes mid-screen for a split second and is screenshotted. This covers blue and purple Bind-on-Equip drops in the world, and any blue or purple you receive in a dungeon or raid. |
 | **New zone** | A screenshot the first time each character enters a zone. |
 | **Your gear** | A screenshot of your character panel at level 1 and every 10 levels, taken once you're out of combat. |
+| **Every session** | The Session Recap window at logout, and one diary line per session. |
 
-Your own screenshots (Print Screen) are never moved, renamed or deleted.
+Each of these can be switched off in the settings window (`/dingcam`). Your own screenshots (Print Screen) are never moved, renamed or deleted.
 
 ## How it works
 
@@ -71,6 +79,10 @@ Windows may warn about running a downloaded script. The helper is plain PowerShe
 
 | Command | Does |
 |---|---|
+| `/dingcam` | Opens the settings window (an on/off switch for every feature) |
+| `/dingcam recap` | Shows the Session Recap for this session |
+| `/dingcam diary` | Prints your last five sessions |
+| `/dingcam recap off` / `on` | Stops / starts the recap opening when you log out |
 | `/dingcam status` | Is the helper running? Which recorder, and is it on? |
 | `/dingcam test` | Saves a test ding (clip plus screenshots), named `TEST ...` |
 | `/dingcam boss` / `rare` | Test a boss or rare kill clip |
@@ -94,6 +106,10 @@ The helper finds everything automatically. To change something, edit `%APPDATA%\
 | `ObsPort`, `ObsPassword` | Read from OBS's WebSocket settings |
 
 The log is at `%LOCALAPPDATA%\DingCam\dingcam.log`.
+
+## Update
+
+Download the latest release and double-click **`Install DingCam`** again. It stops the old helper, puts the new one in its place and starts it. Your settings and your Journey folder are kept.
 
 ## Uninstall
 

@@ -5,7 +5,14 @@
 -- DingCamEvents, first zone visits in DingCamZones, loot in DingCamLoot, so the helper can
 -- file everything per character after you log out or /reload.
 -- Without the helper, moments are saved as normal screenshots (no clips) and you're told how to get it.
--- Commands: /dingcam status | test | gear | loot | dungeon | zone | boss | rare | 59 | warn | remind | clearloot
+-- Every feature has an on/off switch (Options.lua: /dingcam or the minimap button). A moment whose clip, screenshot or
+-- banner is switched off is logged with noclip / noshot / nobanner, so the helper files only what was kept.
+-- Session Recap is in Recap.lua.
+-- Commands: /dingcam (settings) | status | recap | diary | test | gear | loot | dungeon | zone | boss | rare | 59 | warn | remind | clearloot
+
+local _, ns = ...
+-- The switches (Options.lua loads first). If that file ever failed to load, everything simply stays on.
+local opt = ns.opt or function() return true end
 
 local GLOW_DELAY = 0.5   -- seconds after the ding for the glow screenshot (the golden column is fully up by then)
 local BANNER_DELAY = 5 -- seconds after the ding for the banner screenshot
@@ -20,6 +27,29 @@ local function helperRunning()
     local s = DingCamStatus
     return (s and s.helperSeen and math.abs(time() - s.helperSeen) < HELPER_STALE) and true or false
 end
+ns.helperRunning = helperRunning
+
+-- The oldest PC helper that knows everything this addon does (1.3.0: the on/off switches for clips, screenshots and
+-- banners, and the Session Recap diary file). Raise it only when the addon needs a new helper.
+local HELPER_NEEDED = "1.3.0"
+local function versionLess(a, b)   -- "1.2.1" < "1.3.0"; a "-dev" suffix is ignored
+    local x, y = {}, {}
+    for n in tostring(a):gmatch("%d+") do x[#x + 1] = tonumber(n) end
+    for n in tostring(b):gmatch("%d+") do y[#y + 1] = tonumber(n) end
+    for i = 1, 3 do
+        if (x[i] or 0) ~= (y[i] or 0) then return (x[i] or 0) < (y[i] or 0) end
+    end
+    return false
+end
+-- The running helper's version when it's older than HELPER_NEEDED, else nil.
+local function helperOutdated()
+    local v = DingCamStatus and DingCamStatus.helperVersion
+    if helperRunning() and v and versionLess(v, HELPER_NEEDED) then return v end
+end
+ns.helperOutdated = helperOutdated
+ns.HELPER_NEEDED = HELPER_NEEDED
+local UPDATE_HOW = "To update, download it from " .. HELPER_URL .. " and double-click Install DingCam again " ..
+                   "(it replaces the old one and keeps your settings and files)."
 local function clipNote()
     return helperRunning() and ", clip saves in 5 seconds." or " (screenshot only: the PC helper isn't running, see /dingcam status)."
 end
@@ -65,7 +95,22 @@ local function currentPlayed()
     return math.floor(playedBase + (GetTime() - playedAt))
 end
 
+-- The moment's picture: the .tga signal (clip + instant shot) when its clip is on and the helper is running,
+-- otherwise a normal screenshot if its screenshot is on. With the clip on and the screenshot off, the .tga is still
+-- taken (it starts the clip) and the helper throws the picture away (noshot).
+local function momentShot(clip, shot)
+    if clip and helperRunning() then
+        C_Timer.After(GLOW_DELAY, function() signalShot() end)
+    elseif shot then
+        C_Timer.After(GLOW_DELAY, function() normalShot() end)
+    end
+end
+
+-- Tests (/dingcam test, boss, rare) always do everything, whatever the switches say.
 local function signal(level, isTest)
+    local clip, glow, banner = opt("dingClip"), opt("dingGlow"), opt("dingBanner")
+    if isTest then clip, glow, banner = true, true, true end
+    if not (clip or glow or banner) then return end
     DingCamDB = DingCamDB or {}
     local entry = {
         level = level,
@@ -74,18 +119,25 @@ local function signal(level, isTest)
         zone = GetRealZoneText() or "",
         played = currentPlayed(),
         test = isTest or nil,
+        noclip = (not clip) or nil,
+        noshot = (not glow) or nil,
+        nobanner = (not banner) or nil,
     }
     table.insert(DingCamDB, entry)
-    C_Timer.After(GLOW_DELAY, function() signalShot() end)
+    momentShot(clip, glow)
     -- Banner shot in the normal format once the "You've Reached Level N" banner is up.
-    -- The helper recognises it by timing (BANNER_DELAY after the .tga) and files it under Banner\<Character>.
-    C_Timer.After(BANNER_DELAY, function() normalShot() end)
+    -- The helper recognises it by timing (BANNER_DELAY after the .tga, or after the logged time when there's no clip)
+    -- and files it under Banner\<Character>.
+    if banner then C_Timer.After(BANNER_DELAY, function() normalShot() end) end
 end
 
 -- Boss and rare kills: same clip + instant shot as a ding, logged in DingCamEvents (kind = "boss" or "rare").
 local lastEvent = {}
 local function killEvent(kind, name, isTest)
     if not name or name == "" then return end
+    local clip, shot = opt(kind .. "Clip"), opt(kind .. "Shot")   -- bossClip / bossShot, rareClip / rareShot
+    if isTest then clip, shot = true, true end
+    if not (clip or shot) then return end
     if lastEvent[name] and GetTime() - lastEvent[name] < 15 then return end   -- ENCOUNTER_END and BOSS_KILL both fire
     lastEvent[name] = GetTime()
     DingCamEvents = DingCamEvents or {}
@@ -97,8 +149,10 @@ local function killEvent(kind, name, isTest)
         zone = GetRealZoneText() or "",
         level = UnitLevel("player"),
         test = isTest or nil,
+        noclip = (not clip) or nil,
+        noshot = (not shot) or nil,
     })
-    C_Timer.After(GLOW_DELAY, function() signalShot() end)
+    momentShot(clip, shot)
 end
 
 -- Rares: remember rare/rare-elite mobs we see (target, mouseover, nameplates); if one dies while tagged to us
@@ -214,8 +268,22 @@ local function checkStatus()
         return
     end
     DingCamHelperSeen = true
+    -- An older helper still makes clips, but doesn't know the newer switches or the diary file: say so once per
+    -- needed version, in chat only (/dingcam status and the settings window keep showing it).
+    local old = helperOutdated()
+    if old and opt("helperUpdate") and DingCamHelperUpdateSeen ~= HELPER_NEEDED then
+        DingCamHelperUpdateSeen = HELPER_NEEDED
+        print("|cffe6b85cDingCam:|r |cff40ff40new features are here!|r A |cffffff00Session Recap|r of every play session " ..
+              "(it opens when you log out, or type /dingcam recap), an |cffffff00on/off switch for every feature|r " ..
+              "(type /dingcam), and a |cffffff00minimap button|r.")
+        print("|cffe6b85cDingCam:|r your PC helper is version " .. old .. ". Update it to " .. HELPER_NEEDED ..
+              " so the new switches for clips and screenshots work fully and your session diary is also saved as a " ..
+              "text file. " .. UPDATE_HOW)
+    end
     local rec = recorder()
-    if s.replayOff then
+    if not opt("warnings") then   -- switched off: no clip warnings (/dingcam status still reports them)
+        DingCamWarned = nil
+    elseif s.replayOff then
         DingCamWarned = true
         warn(rec.name .. " is OFF, so your level-ups will NOT be recorded.")
         StaticPopup_Show("DINGCAM_WARNING", "|cffff4040" .. rec.name .. " is OFF.|r\nYour level-ups will NOT be recorded.", rec.fix)
@@ -230,7 +298,7 @@ local function checkStatus()
     end
     -- At 59: the helper arms the "big moment" for the character it last saw at 59 (DingCamActive, saved on reload/logout).
     -- Armed for us (or we just reloaded from the popup) -> confirm, and nudge if the replay is short. Otherwise ask for a reload.
-    if UnitLevel("player") == 59 and not s.replayOff then
+    if UnitLevel("player") == 59 and not s.replayOff and opt("bigMoment") then
         local me = UnitName("player")
         local armed = (s.bigMoment and s.bigMomentChar == me) or (DingCamArmPending and time() - DingCamArmPending < 600)
         DingCamArmPending = nil
@@ -370,7 +438,8 @@ local function onLoot(msg, retried)
         print("|cffe6b85cDingCam debug:|r " .. (link or itemString) .. " quality " .. quality ..
               ((boe or dungeon) and (dungeon and " dungeon/raid loot" or " BoE") .. " -> taking loot shot" or " not BoE -> skipped"))
     end
-    if boe or dungeon then lootShot(link or itemString, simDungeon or nil) end
+    local wanted = simDungeon or (dungeon and opt("lootDungeon")) or (not dungeon and boe and opt("lootWorld"))
+    if wanted then lootShot(link or itemString, simDungeon or nil) end
 end
 
 -- Gear snapshots: at level 1 and every 10 levels, once you're out of combat, the character panel opens just long enough
@@ -427,17 +496,18 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
     if event == "UNIT_HEALTH" then   -- a rare we're watching (target or nameplate) just died while tagged to us
         local guid = UnitGUID(level)
         if guid and rares[guid] and UnitIsDead(level) then
-            if not UnitIsTapDenied(level) then killEvent("rare", rares[guid]) end
+            if not UnitIsTapDenied(level) then killEvent("rare", rares[guid]) end   -- killEvent checks the switches
             rares[guid] = nil
         end
     elseif event == "PLAYER_TARGET_CHANGED" then noteRare("target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then noteRare("mouseover")
     elseif event == "NAME_PLATE_UNIT_ADDED" then noteRare(level)   -- first arg is the nameplate unit
     elseif event == "PLAYER_LEVEL_UP" then
-        signal(level)
-        DingCamActive = { char = UnitName("player"), level = level }
-        if level % GEAR_EVERY == 0 then C_Timer.After(GEAR_DELAY, function() gearShot(level) end) end
-        if level == 59 and helperRunning() then C_Timer.After(BANNER_DELAY + 2, almost60) end   -- after the banner shot, so it never covers it
+        signal(level)   -- checks the level-up switches
+        -- nobig: the longer level 60 clip is switched off, so the helper doesn't arm it at 59
+        DingCamActive = { char = UnitName("player"), level = level, nobig = (not opt("bigMoment")) or nil }
+        if level % GEAR_EVERY == 0 and opt("gearEvery") then C_Timer.After(GEAR_DELAY, function() gearShot(level) end) end
+        if level == 59 and helperRunning() and opt("bigMoment") then C_Timer.After(BANNER_DELAY + 2, almost60) end   -- after the banner shot, so it never covers it
     elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight
         if gearWaiting then
             local g = gearWaiting
@@ -451,24 +521,26 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
     elseif event == "BOSS_KILL" then
         killEvent("boss", a2)                       -- encounterID, name
     elseif event == "CHAT_MSG_LOOT" then
-        onLoot(level)   -- first arg is the chat text
+        if opt("lootWorld") or opt("lootDungeon") then onLoot(level) end   -- first arg is the chat text
     elseif event == "ZONE_CHANGED_NEW_AREA" then
-        zoneCheck()
+        if opt("zones") then zoneCheck() end
     elseif event == "PLAYER_ENTERING_WORLD" then
         if firstEnter then
             firstEnter = false
-            DingCamActive = { char = UnitName("player"), level = UnitLevel("player") }   -- who's playing (for the level 60 moment)
+            -- who's playing (for the level 60 moment)
+            DingCamActive = { char = UnitName("player"), level = UnitLevel("player"), nobig = (not opt("bigMoment")) or nil }
             -- Safety net: if a session ever ended mid signal shot, put screenshots back to JPG (DingCam needs your shots non-TGA).
             if GetCVar("screenshotFormat") == "tga" then SetCVar("screenshotFormat", "jpeg") end
             C_Timer.After(8, checkStatus)   -- after the login spam, so it's noticed
-            C_Timer.After(5, function() if not playedBase then RequestTimePlayed() end end)   -- once per login, only if nothing else asked
-            zoneCheck(3)                    -- a brand-new character's first zone (after the loading screen)
+            -- once per login, only if nothing else asked and it's switched on
+            C_Timer.After(5, function() if not playedBase and opt("played") then RequestTimePlayed() end end)
+            if opt("zones") then zoneCheck(3) end   -- a brand-new character's first zone (after the loading screen)
             DingCamCharDB = DingCamCharDB or {}
-            if UnitLevel("player") == 1 and not DingCamCharDB.gearStart then   -- starting gear, once per character
+            if UnitLevel("player") == 1 and not DingCamCharDB.gearStart and opt("gearStart") then   -- starting gear, once per character
                 DingCamCharDB.gearStart = true
                 C_Timer.After(12, function() gearShot(1) end)   -- after the login messages and the zone shot
             end
-        else
+        elseif opt("zones") then
             zoneCheck()                     -- arriving somewhere new through a loading screen (dungeons, boats)
         end
     else   -- SCREENSHOT_SUCCEEDED / SCREENSHOT_FAILED
@@ -483,10 +555,19 @@ end)
 
 SLASH_DINGCAM1 = "/dingcam"
 SlashCmdList.DINGCAM = function(msg)
-    if msg == "status" then   -- is the PC helper running, and is its recorder on?
+    msg = ((msg or ""):lower():match("^%s*(.-)%s*$")) or ""
+    if (msg == "" or msg == "options" or msg == "settings" or msg == "config") and ns.toggleOptions then   -- the settings window
+        ns.toggleOptions()
+    elseif (msg == "recap" or msg == "recap on" or msg == "recap off" or msg == "diary") and ns.recapCommand then   -- Recap.lua
+        ns.recapCommand(msg)
+    elseif msg == "status" then   -- is the PC helper running, and is its recorder on?
         local s = DingCamStatus
         if helperRunning() then
             print("|cffe6b85cDingCam|r: the PC helper (version " .. (s.helperVersion or "?") .. ") is running. Moments are saved as clips.")
+            if helperOutdated() then
+                print("|cffe6b85cDingCam|r: |cffffd100an update is available:|r helper " .. HELPER_NEEDED ..
+                      " is needed for the new on/off switches and the diary file. " .. UPDATE_HOW)
+            end
             local rec = recorder()
             print("|cffe6b85cDingCam|r: recording with " .. rec.name .. ": " .. (s.replayOff and ("|cffff4040OFF|r. To fix: " .. plain(rec.fix) .. ", then /reload")
                   or ((s.replayLength or 0) > 0 and ("on (" .. s.replayLength .. " s)") or "ready")) .. ".")
@@ -556,6 +637,7 @@ SlashCmdList.DINGCAM = function(msg)
         signal(UnitLevel("player"), true)
     else
         print("|cffe6b85cDingCam|r: active" .. (helperRunning() and "" or " (screenshots only: the PC helper isn't running)") ..
-              ". /dingcam test saves a test moment, /dingcam status checks the PC helper.")
+              ". /dingcam opens the settings, /dingcam recap shows this session, /dingcam test saves a test moment, " ..
+              "/dingcam status checks the PC helper.")
     end
 end

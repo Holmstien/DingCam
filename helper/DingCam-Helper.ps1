@@ -16,8 +16,11 @@
 #      dings  -> Level-ups / Instant / Banner \<Char>\Level NN - Zone - 1d 4h played - <time>
 #      bosses -> Bosses\<Char>\<Boss> - <Zone> - <time>  (clip + instant shot), rares -> Rares\<Char>\...
 #      loot   -> Loot\<Char>\<Item> - <Zone> - <time>.jpg, zones -> Zones\<Char>\<Zone> - Level NN - <time>.jpg (copies)
-#      Optional companion addons, if installed: DingCam Extras (Moments, Zones arrival clips, Flight paths,
-#      Professions, Quests, a partner's dings) and Session Recap (diary exported to Diary\<Char>.txt).
+#      A moment whose clip, screenshot or banner is switched off in the addon (noclip / noshot / nobanner) gets only
+#      what was kept: without a clip, its normal screenshots are filed by time, like loot and zone shots.
+#      Session Recap (built into the addon since 1.3.0): the diary is exported to Diary\<Char>.txt.
+#      Optional companion addon, if installed: DingCam Extras (Moments, Zones arrival clips, Flight paths,
+#      Professions, Quests, a partner's dings).
 # Your own screenshots are never moved, renamed or deleted.
 #
 # Settings: %APPDATA%\DingCam\settings.json (created on first run). Every value left blank is found automatically.
@@ -146,7 +149,7 @@ $momentRoot  = Join-Path $journey 'Moments'       # DingCam Extras: Clip that!, 
 $flightRoot  = Join-Path $journey 'Flight paths'
 $profRoot    = Join-Path $journey 'Professions'
 $questRoot   = Join-Path $journey 'Quests'
-$diaryRoot   = Join-Path $journey 'Diary'          # Session Recap diary, one text file per character
+$diaryRoot   = Join-Path $journey 'Diary'          # Session Recap diary (DingCamDiary), one text file per character
 $pendingName = '_New (filed at logout or reload)'
 
 # One helper per settings file (a test copy with its own settings can run next to the real one).
@@ -543,6 +546,7 @@ function Get-SvEntries($varName, $file = 'DingCam.lua') {
             if (& $g 'time') {
                 [pscustomobject]@{ Level = & $g 'level'; Item = & $g 'item'; Name = & $g 'name'; Kind = & $g 'kind'; With = & $g 'with'
                                    Char = & $g 'char'; Zone = & $g 'zone'; Played = & $g 'played'; Test = [bool](& $g 'test')
+                                   NoClip = [bool](& $g 'noclip'); NoShot = [bool](& $g 'noshot'); NoBanner = [bool](& $g 'nobanner')
                                    When = [DateTimeOffset]::FromUnixTimeSeconds([long](& $g 'time')).LocalDateTime }
             }
         }
@@ -566,6 +570,7 @@ function Update-BigMoment {
         if (-not $m.Success) { continue }
         $b = $m.Groups[1].Value
         if ($b -match '\["level"\]\s*=\s*(\d+)') { $armed = ([int]$Matches[1] -eq 59) }
+        if ($b -match '\["nobig"\]\s*=\s*true') { $armed = $false }   # the longer level 60 clip is switched off in the addon
         if ($b -match '\["char"\]\s*=\s*"([^"]*)"') { $char = $Matches[1] }
     }
     if (-not $armed) { $char = '' }
@@ -587,13 +592,21 @@ function File-Pending {
         }
         foreach ($f in $files) {
             $t = [datetime]::ParseExact($f.BaseName.Substring(5), 'yyyy-MM-dd HH-mm-ss', $null)
-            $near = @($entries | ? { [Math]::Abs(($t - $_.When).TotalSeconds) -le 30 } |
+            # Moments whose clip was switched off took no .tga, so they never own a pending file (File-Copies files
+            # their normal screenshots instead).
+            $near = @($entries | ? { -not $_.NoClip -and [Math]::Abs(($t - $_.When).TotalSeconds) -le 30 } |
                       Sort { [Math]::Abs(($t - $_.When).TotalSeconds) })   # closest first (two quick levels)
             if (-not $near) { continue }
             # One clip can belong to several moments at once (a boss kill that also dings you): the closest moment,
             # plus any other within 3 s of it, each get the file.
             $owners = @($near | ? { [Math]::Abs(($_.When - $near[0].When).TotalSeconds) -le 3 })
-            if ($root -eq $bannerRoot) { $owners = @($owners | ? Kind -eq 'ding') }   # only dings have a banner
+            if ($root -eq $bannerRoot) { $owners = @($owners | ? { $_.Kind -eq 'ding' -and -not $_.NoBanner }) }   # only dings have a banner
+            if ($root -eq $instantRoot) {
+                $owners = @($owners | ? { -not $_.NoShot })
+                if (-not $owners) {   # the .tga only started the clip: this moment's screenshot is switched off
+                    Remove-Item $f.FullName -Force; Log "Instant shot removed (screenshot switched off in the addon): $($f.Name)"; continue
+                }
+            }
             if (-not $owners) {   # a "banner" next to a kill was really some other screenshot (loot, zone)
                 $src = $script:bannerOf[$f.FullName]
                 if ($src) { $script:bannerSources.Remove($src) }   # hand the original back to loot/zone filing
@@ -644,28 +657,46 @@ function File-Pending {
 
 # Loot and zone shots stay in Screenshots; copies are filed per character. Each screenshot is used once,
 # matched to the entry it was taken for (taken within about a second of the logged time).
+# Moments whose clip was switched off in the addon (noclip) took normal screenshots instead of the .tga: their
+# picture (dingshot / bossshot / rareshot, unless noshot) and a level-up's banner (about 5 s later, unless nobanner)
+# are filed the same way, under the same names a clip's pictures get.
 function File-Copies {
     $shots = @(Get-ChildItem "$wow\_*_\Screenshots\*.jpg" -File -ErrorAction SilentlyContinue | ? { -not $script:bannerSources.ContainsKey($_.FullName) })
     if (-not $shots) { return }
+    $noClip = @(@(Get-SvEntries 'DingCamDB' | % { $_.Kind = 'ding'; $_ }) + @(Get-SvEntries 'DingCamEvents')) | ? { $_.NoClip }
+    $noClipShots = foreach ($m in $noClip) {
+        if (-not $m.NoShot) { $c = $m.PSObject.Copy(); $c.Kind = "$($m.Kind)shot"; $c }
+        if ($m.Kind -eq 'ding' -and -not $m.NoBanner) { $c = $m.PSObject.Copy(); $c.Kind = 'banner'; $c }
+    }
     $todo = @(@(Get-SvEntries 'DingCamLoot' | % { $_.Kind = 'loot'; $_ }) + @(Get-SvEntries 'DingCamZones' | % { $_.Kind = 'zone'; $_ }) +
-              @(Get-SvEntries 'DingCamGear' | % { $_.Kind = 'gear'; $_ })) | Sort When
+              @(Get-SvEntries 'DingCamGear' | % { $_.Kind = 'gear'; $_ }) + @($noClipShots)) |
+            Sort { $_.When.AddSeconds($(if ($_.Kind -eq 'banner') { 5 } else { 0 })) }
     $used = @{}
     foreach ($e in $todo) {
         $test = if ($e.Test) { 'TEST ' } else { '' }
+        $from, $to, $offset = -1, 4, 0.5   # seconds after the logged time the shot may be taken (the time is rounded down)
         if ($e.Kind -eq 'loot') {
             $dir = Join-Path $lootRoot (Clean $e.Char)
             $name = "{0}{1} - {2} - {3:yyyy-MM-dd HH-mm-ss}.jpg" -f $test, $e.Item, $e.Zone, $e.When
         } elseif ($e.Kind -eq 'gear') {
             $dir = Join-Path $gearRoot (Clean $e.Char)
             $name = "{0}Level {1:D2} - {2:yyyy-MM-dd HH-mm}.jpg" -f $test, [int]$e.Level, $e.When
+        } elseif ($e.Kind -eq 'dingshot' -or $e.Kind -eq 'banner') {
+            $played = Format-Played $e.Played
+            $dir = Join-Path $(if ($e.Kind -eq 'banner') { $bannerRoot } else { $instantRoot }) (Clean $e.Char)
+            $name = "{0}Level {1:D2} - {2}{3} - {4:yyyy-MM-dd HH-mm}.jpg" -f $test, [int]$e.Level, $e.Zone, ($(if ($played) { " - $played" } else { '' })), $e.When
+            if ($e.Kind -eq 'banner') { $from, $to, $offset = 3.5, 8, 5.5 }
+        } elseif ($e.Kind -eq 'bossshot' -or $e.Kind -eq 'rareshot') {
+            $dir = Join-Path $(if ($e.Kind -eq 'bossshot') { $bossRoot } else { $rareRoot }) (Clean $e.Char)
+            $name = "{0}{1} - {2} - {3:yyyy-MM-dd HH-mm-ss}.jpg" -f $test, $e.Name, $e.Zone, $e.When
         } else {
             $dir = Join-Path $zoneRoot (Clean $e.Char)
             $name = "{0} - Level {1:D2} - {2:yyyy-MM-dd HH-mm}.jpg" -f $e.Zone, [int]$e.Level, $e.When
         }
         $dest = Join-Path $dir (Clean $name)
-        $target = $e.When.AddSeconds(0.5)   # the logged time is rounded down to the second
+        $target = $e.When.AddSeconds($offset)
         $shot = $shots | ? { -not $used.ContainsKey($_.FullName) } |
-                ? { $d = ($_.CreationTime - $e.When).TotalSeconds; $d -ge -1 -and $d -le 4 } |
+                ? { $d = ($_.CreationTime - $e.When).TotalSeconds; $d -ge $from -and $d -le $to } |
                 Sort { [Math]::Abs(($_.CreationTime - $target).TotalSeconds) } | Select -First 1
         if (-not $shot) { continue }
         $used[$shot.FullName] = 1
@@ -676,10 +707,11 @@ function File-Copies {
     }
 }
 
-# Session Recap diary (optional companion addon) -> Diary\<Character>.txt (one line per session, rewritten when it changes).
+# Session Recap diary (DingCamDiary, built into the addon since 1.3.0) -> Diary\<Character>.txt (one line per session,
+# rewritten when it changes).
 function Export-Diary {
-    foreach ($sv in Get-ChildItem "$wow\_*_\WTF\Account\*\SavedVariables\SessionRecap.lua" -ErrorAction SilentlyContinue) {
-        $block = [regex]::Match((Get-Content $sv.FullName -Raw -Encoding UTF8), '(?ms)^SessionRecapDiary = \{(.*?)^\}\s*$')
+    foreach ($sv in Get-ChildItem "$wow\_*_\WTF\Account\*\SavedVariables\DingCam.lua" -ErrorAction SilentlyContinue) {
+        $block = [regex]::Match((Get-Content $sv.FullName -Raw -Encoding UTF8), '(?ms)^DingCamDiary = \{(.*?)^\}\s*$')
         if (-not $block.Success) { continue }
         foreach ($c in [regex]::Matches($block.Groups[1].Value, '\["((?:[^"\\]|\\.)*)"\]\s*=\s*\{([^{}]*)\}')) {
             $char = Clean ($c.Groups[1].Value -replace '\\(.)', '$1')
@@ -743,7 +775,7 @@ while ($true) {
     if (($now - $lastSvPoll).TotalSeconds -ge 2) {
         $lastSvPoll = $now
         # (-Include silently matches nothing with wildcard folders in the path, so each name is listed on its own)
-        $stamp = ('DingCam.lua', 'DingCamExtras.lua', 'SessionRecap.lua' | % { Get-ChildItem "$wow\_*_\WTF\Account\*\SavedVariables\$_" -ErrorAction SilentlyContinue } |
+        $stamp = ('DingCam.lua', 'DingCamExtras.lua' | % { Get-ChildItem "$wow\_*_\WTF\Account\*\SavedVariables\$_" -ErrorAction SilentlyContinue } |
                   Measure LastWriteTime -Maximum).Maximum
         if ($stamp -and $stamp -ne $svStamp) { $svStamp = $stamp; Start-Sleep -Milliseconds 500; Update-BigMoment; File-Pending; File-Copies; Export-Diary }
     }
