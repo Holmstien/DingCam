@@ -11,6 +11,10 @@
 -- Commands: /dingcam (settings) | status | recap | diary | test | gear | loot | dungeon | zone | boss | rare | 59 | warn | remind | clearloot
 
 local _, ns = ...
+
+-- Newer clients hide some unit details ("secret values") inside dungeons and in combat. They can't be used as table
+-- keys or compared, so anything secret is skipped (rares are out in the world, where nothing is secret).
+local function readable(v) return v ~= nil and not (issecretvalue and issecretvalue(v)) end
 -- The switches (Options.lua loads first). If that file ever failed to load, everything simply stays on.
 local opt = ns.opt or function() return true end
 
@@ -180,7 +184,7 @@ end
 -- Boss and rare kills: same clip + instant shot as a ding, logged in DingCamEvents (kind = "boss" or "rare").
 local lastEvent = {}
 local function killEvent(kind, name, isTest)
-    if not name or name == "" then return end
+    if not readable(name) or name == "" then return end
     local clip, shot = opt(kind .. "Clip"), opt(kind .. "Shot")   -- bossClip / bossShot, rareClip / rareShot
     if isTest then clip, shot = true, true end
     if not (clip or shot) then return end
@@ -206,7 +210,10 @@ end
 local rares = {}
 local function noteRare(unit)
     local c = UnitExists(unit) and UnitClassification(unit)
-    if (c == "rare" or c == "rareelite") and not UnitIsPlayer(unit) then rares[UnitGUID(unit)] = UnitName(unit) end
+    if not readable(c) then return end
+    local guid = UnitGUID(unit)
+    if not readable(guid) then return end
+    if (c == "rare" or c == "rareelite") and not UnitIsPlayer(unit) then rares[guid] = UnitName(unit) end
 end
 
 -- First visit to a zone (per character): screenshot once the big zone-name text is up.
@@ -466,6 +473,7 @@ local LOOT_DEBUG = false   -- true: report every blue/purple loot in chat (for t
 local simDungeon = false   -- set briefly by /dingcam dungeon to pretend we're inside an instance
 
 local function onLoot(msg, retried)
+    if not readable(msg) then return end   -- loot text can be secret in dungeons
     local own = false
     for _, p in ipairs(lootPatterns) do
         if msg:match(p) then own = true; break end
@@ -564,7 +572,7 @@ local firstEnter = true
 f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
     if event == "UNIT_HEALTH" then   -- a rare we're watching (target or nameplate) just died while tagged to us
         local guid = UnitGUID(level)
-        if guid and rares[guid] and UnitIsDead(level) then
+        if readable(guid) and rares[guid] and UnitIsDead(level) then
             if not UnitIsTapDenied(level) then killEvent("rare", rares[guid]) end   -- killEvent checks the switches
             rares[guid] = nil
         end

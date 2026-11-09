@@ -10,6 +10,10 @@
 -- DingCamDiary (diary lines per character).
 
 local _, ns = ...
+
+-- Newer clients hide some unit details ("secret values") inside dungeons and in combat. They can't be used as table
+-- keys or compared, so anything secret is skipped (rares are out in the world, where nothing is secret).
+local function readable(v) return v ~= nil and not (issecretvalue and issecretvalue(v)) end
 local S   -- this session (DingCamRecap)
 local function key()   -- the name this character is filed under (DingCam.lua: the first name, or the full name if shared)
     return (ns.charKey and ns.charKey()) or UnitName("player")
@@ -179,6 +183,7 @@ for _, fmt in ipairs({ LOOT_ITEM_SELF_MULTIPLE, LOOT_ITEM_SELF }) do
     if p and p ~= "" then table.insert(lootPrefixes, "^" .. p:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")) end
 end
 local function onLoot(msg)
+    if not readable(msg) then return end   -- loot text can be secret in dungeons
     local own = false
     for _, p in ipairs(lootPrefixes) do if msg:match(p) then own = true; break end end
     if not own then return end
@@ -241,7 +246,7 @@ end
 
 local lastBoss = {}
 local function onBoss(name)
-    if not name or name == "" then return end
+    if not readable(name) or name == "" then return end
     if lastBoss[name] and GetTime() - lastBoss[name] < 15 then return end   -- ENCOUNTER_END and BOSS_KILL both fire
     lastBoss[name] = GetTime()
     S.bosses = S.bosses + 1
@@ -250,7 +255,10 @@ end
 local rares = {}
 local function noteRare(unit)
     local c = UnitExists(unit) and UnitClassification(unit)
-    if (c == "rare" or c == "rareelite") and not UnitIsPlayer(unit) then rares[UnitGUID(unit)] = true end
+    if not readable(c) then return end
+    local guid = UnitGUID(unit)
+    if not readable(guid) then return end
+    if (c == "rare" or c == "rareelite") and not UnitIsPlayer(unit) then rares[guid] = true end
 end
 
 local f = CreateFrame("Frame")
@@ -296,7 +304,7 @@ f:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
     S.last = time()
     if event == "UNIT_HEALTH" then
         local guid = UnitGUID(a1)
-        if guid and rares[guid] and UnitIsDead(a1) then
+        if readable(guid) and rares[guid] and UnitIsDead(a1) then
             if not UnitIsTapDenied(a1) then S.rares = S.rares + 1 end
             rares[guid] = nil
         end
