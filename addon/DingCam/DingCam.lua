@@ -202,21 +202,50 @@ local function recorder()
 end
 local function plain(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end   -- without colour codes, for chat
 
+-- DingCam's own popup window. WoW's shared StaticPopup is avoided on purpose (since 1.3.4): an addon showing it can
+-- leave that popup "tainted", and a later Blizzard popup that does a protected action (release spirit, confirmations)
+-- then gets blocked with "DingCam has been blocked from an action only available to the Blizzard UI".
+local dialog
+local function showDialog(text, button1, onButton1, button2, onButton2)
+    if not dialog then
+        local ok, d = pcall(CreateFrame, "Frame", "DingCamDialog", UIParent, "BasicFrameTemplateWithInset")
+        if not ok then d = CreateFrame("Frame", "DingCamDialog", UIParent, "BackdropTemplate") end
+        d:SetWidth(420); d:SetPoint("TOP", 0, -140); d:SetFrameStrata("DIALOG"); d:SetClampedToScreen(true)
+        d:SetMovable(true); d:EnableMouse(true); d:RegisterForDrag("LeftButton")
+        d:SetScript("OnDragStart", d.StartMoving); d:SetScript("OnDragStop", d.StopMovingOrSizing)
+        if d.TitleText then d.TitleText:SetText("DingCam") end
+        d.text = d:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        d.text:SetPoint("TOP", 0, -36); d.text:SetWidth(380); d.text:SetJustifyH("CENTER")
+        d.b1 = CreateFrame("Button", nil, d, "UIPanelButtonTemplate"); d.b1:SetSize(140, 24)
+        d.b2 = CreateFrame("Button", nil, d, "UIPanelButtonTemplate"); d.b2:SetSize(140, 24)
+        tinsert(UISpecialFrames, "DingCamDialog")   -- Escape closes it (and does nothing else)
+        dialog = d
+    end
+    local d = dialog
+    d.text:SetText(text)
+    d:SetHeight(math.max(140, d.text:GetStringHeight() + 96))
+    d.b1:ClearAllPoints(); d.b2:ClearAllPoints()
+    d.b1:SetText(button1)
+    d.b1:SetScript("OnClick", function() d:Hide(); if onButton1 then onButton1() end end)
+    if button2 then
+        d.b2:SetText(button2)
+        d.b2:SetScript("OnClick", function() d:Hide(); if onButton2 then onButton2() end end)
+        d.b1:SetPoint("BOTTOMRIGHT", d, "BOTTOM", -6, 16); d.b2:SetPoint("BOTTOMLEFT", d, "BOTTOM", 6, 16)
+        d.b2:Show()
+    else
+        d.b1:SetPoint("BOTTOM", 0, 16); d.b2:Hide()
+    end
+    d:Show()
+    if d.Raise then d:Raise() end
+end
+
 -- Level 59: one level to go. Popup (after the banner shot) asking for a longer replay, then Reload UI to arm DingCam.
-StaticPopupDialogs["DINGCAM_ALMOST_60"] = {
-    text = "|cffffd100One level to go!|r\n\nYour level 60 moment deserves the full story.\n\nFor a longer clip, %s.\nThen click |cffffff00Reload UI|r and DingCam will film your 60 ding with extra time for the celebration.",
-    button1 = "Reload UI",
-    button2 = "Later",
-    OnAccept = function() DingCamArmPending = time(); ReloadUI() end,   -- the reload saves DingCamActive, which arms the helper
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
+local ALMOST60_TEXT = "|cffffd100One level to go!|r\n\nYour level 60 moment deserves the full story.\n\nFor a longer clip, %s.\nThen click |cffffff00Reload UI|r and DingCam will film your 60 ding with extra time for the celebration."
 local function almost60()
     RaidNotice_AddMessage(RaidWarningFrame, "DingCam: one level to go! Get ready for 60.", { r = 1, g = 0.82, b = 0 })
     PlaySound(SOUNDKIT and SOUNDKIT.READY_CHECK or 8960)
-    StaticPopup_Show("DINGCAM_ALMOST_60", recorder().length)
+    -- the reload saves DingCamActive, which arms the helper
+    showDialog(ALMOST60_TEXT:format(recorder().length), "Reload UI", function() DingCamArmPending = time(); ReloadUI() end, "Later")
 end
 
 -- Warning at login/reload if the PC helper (via Status.lua) reports the recorder off or a failed clip.
@@ -226,37 +255,21 @@ local function warn(text)
     PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959)
 end
 
--- Classic WoW popup (alert icon) with a Reload UI button.
-StaticPopupDialogs["DINGCAM_WARNING"] = {
-    text = "|cffe6b85cDingCam|r\n\n%s\n\nTo fix: %s.\nThen click |cffffff00Reload UI|r.",
-    button1 = "Reload UI",
-    button2 = "Later",
-    OnAccept = function() ReloadUI() end,
-    showAlert = true,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
+-- The recorder warning popup, with a Reload UI button.
+local function warningDialog(what, fix)
+    showDialog("|cffe6b85cDingCam|r\n\n" .. what .. "\n\nTo fix: " .. fix .. ".\nThen click |cffffff00Reload UI|r.",
+               "Reload UI", function() ReloadUI() end, "Later")
+end
 
 -- No helper on the PC (never installed, or not running): moments are still saved, as normal screenshots.
-StaticPopupDialogs["DINGCAM_NO_HELPER"] = {
-    text = "|cffe6b85cDingCam|r\n\n|cffff4040The DingCam helper isn't running on your PC.|r\nLevel-ups, boss kills and rares are saved as screenshots only, without video clips.\n\nTo get clips, download the helper from\n|cffffff00%s|r\nand run |cffffff00Install DingCam|r. Then type /reload.",
-    button1 = "Got it",
-    button2 = "Don't remind me",
-    OnCancel = function(_, _, reason)
-        if reason == "clicked" then
-            DingCamNoHelperWarn = true
-            print("|cffe6b85cDingCam|r: OK, no more helper reminders. /dingcam remind turns them back on.")
-        end
-    end,
-    showAlert = true,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    noCancelOnEscape = true,   -- Escape just closes it; only the button turns reminders off
-    preferredIndex = 3,
-}
+-- Escape just closes it; only the button turns reminders off.
+local function noHelperDialog()
+    showDialog("|cffe6b85cDingCam|r\n\n|cffff4040The DingCam helper isn't running on your PC.|r\nLevel-ups, boss kills and rares are saved as screenshots only, without video clips.\n\nTo get clips, download the helper from\n|cffffff00" .. HELPER_URL .. "|r\nand run |cffffff00Install DingCam|r. Then type /reload.",
+               "Got it", nil, "Don't remind me", function()
+                   DingCamNoHelperWarn = true
+                   print("|cffe6b85cDingCam|r: OK, no more helper reminders. /dingcam remind turns them back on.")
+               end)
+end
 
 local function checkStatus()
     local s = DingCamStatus
@@ -268,7 +281,7 @@ local function checkStatus()
             DingCamHelperIntro = true
             print("|cffff4040DingCam:|r the PC helper isn't running, so moments are saved as screenshots only (no clips). " ..
                   "Get it at " .. HELPER_URL .. ", or type /dingcam status.")
-            StaticPopup_Show("DINGCAM_NO_HELPER", HELPER_URL)
+            noHelperDialog()
         end
         return
     end
@@ -291,11 +304,11 @@ local function checkStatus()
     elseif s.replayOff then
         DingCamWarned = true
         warn(rec.name .. " is OFF, so your level-ups will NOT be recorded.")
-        StaticPopup_Show("DINGCAM_WARNING", "|cffff4040" .. rec.name .. " is OFF.|r\nYour level-ups will NOT be recorded.", rec.fix)
+        warningDialog("|cffff4040" .. rec.name .. " is OFF.|r\nYour level-ups will NOT be recorded.", rec.fix)
     elseif s.lastFail then
         DingCamWarned = true
         warn("your clip from " .. s.lastFail .. " was NOT saved.")
-        StaticPopup_Show("DINGCAM_WARNING", "|cffff4040Your clip from " .. s.lastFail .. " was NOT saved.|r\n" .. rec.name .. " may be off.", rec.fix)
+        warningDialog("|cffff4040Your clip from " .. s.lastFail .. " was NOT saved.|r\n" .. rec.name .. " may be off.", rec.fix)
     elseif DingCamWarned then
         DingCamWarned = nil
         print("|cff40ff40DingCam:|r " .. rec.name .. " is on. You're all set, level-ups will be recorded.")
@@ -454,17 +467,27 @@ local GEAR_EVERY = 10
 local GEAR_DELAY = BANNER_DELAY + 1.5   -- seconds after a ding: after the banner shot, so they never collide
 local gearWaiting, gearOpened, gearShooting, gearTimer
 
+-- Closes the character panel DingCam opened. Never during a fight (a Blizzard panel toggled by an addon in combat can
+-- be blocked): if a fight started in that split second, it closes as soon as the fight ends (PLAYER_REGEN_ENABLED).
+local gearCloseLater
+local function closeGearPanel()
+    if gearOpened and CharacterFrame:IsShown() then
+        if InCombatLockdown() then gearCloseLater = true; return end
+        ToggleCharacter("PaperDollFrame")
+    end
+    gearOpened = false
+end
+
 local function gearDone()
     if not gearShooting then return end
     gearShooting = false
     if gearTimer then gearTimer:Cancel(); gearTimer = nil end
-    if gearOpened and CharacterFrame:IsShown() then ToggleCharacter("PaperDollFrame") end
-    gearOpened = false
+    closeGearPanel()
 end
 
 local function gearShot(level, isTest)
     if InCombatLockdown() then gearWaiting = { level, isTest }; return end   -- PLAYER_REGEN_ENABLED picks it up
-    if lootBusy or savedFormat or gearShooting or (InCinematic and InCinematic()) then
+    if lootBusy or savedFormat or gearShooting or gearCloseLater or (InCinematic and InCinematic()) then
         C_Timer.After(0.5, function() gearShot(level, isTest) end)
         return
     end
@@ -513,7 +536,8 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
         DingCamActive = { char = UnitName("player"), level = level, nobig = (not opt("bigMoment")) or nil }
         if level % GEAR_EVERY == 0 and opt("gearEvery") then C_Timer.After(GEAR_DELAY, function() gearShot(level) end) end
         if level == 59 and helperRunning() and opt("bigMoment") then C_Timer.After(BANNER_DELAY + 2, almost60) end   -- after the banner shot, so it never covers it
-    elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight
+    elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight, or a panel left to close
+        if gearCloseLater then gearCloseLater = nil; closeGearPanel() end
         if gearWaiting then
             local g = gearWaiting
             gearWaiting = nil
@@ -593,7 +617,7 @@ SlashCmdList.DINGCAM = function(msg)
         print("|cffe6b85cDingCam|r: helper reminders are back on.")
     elseif msg == "warn" then   -- preview the warning without turning the recorder off
         warn("this is a PREVIEW of the recorder warning.")
-        StaticPopup_Show("DINGCAM_WARNING", "|cffff4040" .. recorder().name .. " is OFF.|r\nYour level-ups will NOT be recorded.\n(Preview only)", recorder().fix)
+        warningDialog("|cffff4040" .. recorder().name .. " is OFF.|r\nYour level-ups will NOT be recorded.\n(Preview only)", recorder().fix)
     elseif msg == "dungeon" then   -- simulate winning a roll in a dungeon, using a blue/purple item from your bags
         local GetLink = (C_Container and C_Container.GetContainerItemLink) or GetContainerItemLink
         local GetSlots = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
