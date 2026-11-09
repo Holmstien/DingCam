@@ -553,6 +553,50 @@ function Get-SvEntries($varName, $file = 'DingCam.lua') {
     }
 }
 
+# Folder names: the addon (1.3.6+) files every character under its full name ("Confessor Faithforge"). Older addons used
+# the first name only. The addon's DingCamNames says which full name each old first name belongs to: the old folders
+# are moved to the full name, and old saved moments resolve to it (so nothing is filed or copied twice).
+# The same first name claimed on two WoW accounts can't be told apart, so that one is left alone.
+function Get-NameMap {
+    $map = @{}; $clash = @{}
+    foreach ($sv in Get-ChildItem "$wow\_*_\WTF\Account\*\SavedVariables\DingCam.lua" -ErrorAction SilentlyContinue) {
+        $block = [regex]::Match((Get-Content $sv.FullName -Raw -Encoding UTF8), '(?ms)^DingCamNames = \{(.*?)^\}\s*$')
+        if (-not $block.Success) { continue }
+        foreach ($m in [regex]::Matches($block.Groups[1].Value, '\["((?:[^"\\]|\\.)*)"\]\s*=\s*"((?:[^"\\]|\\.)*)"')) {
+            $first = $m.Groups[1].Value -replace '\\(.)', '$1'; $full = $m.Groups[2].Value -replace '\\(.)', '$1'
+            if ($map.ContainsKey($first) -and $map[$first] -ne $full) { $clash[$first] = 1 } else { $map[$first] = $full }
+        }
+    }
+    foreach ($k in @($clash.Keys)) { $map.Remove($k) }
+    $map
+}
+$script:nameMap = @{}
+function Resolve-Char($c) { if ($c -and $script:nameMap.ContainsKey($c)) { $script:nameMap[$c] } else { $c } }
+
+function Move-OldFolders {
+    $script:nameMap = Get-NameMap
+    foreach ($first in @($script:nameMap.Keys)) {
+        $full = $script:nameMap[$first]
+        if ((Clean $first) -eq (Clean $full)) { continue }
+        foreach ($root in $clipRoot, $bannerRoot, $instantRoot, $lootRoot, $bossRoot, $rareRoot, $zoneRoot, $gearRoot, $momentRoot, $flightRoot, $profRoot, $questRoot) {
+            $old = Join-Path $root (Clean $first); $new = Join-Path $root (Clean $full)
+            if (-not (Test-Path -LiteralPath $old -PathType Container)) { continue }
+            if (-not (Test-Path -LiteralPath $new)) {
+                Move-Item -LiteralPath $old $new
+                Log "Folder moved to the full character name: $old -> $new"
+                continue
+            }
+            $kept = 0
+            foreach ($f in Get-ChildItem -LiteralPath $old -File) {
+                $dest = Join-Path $new $f.Name
+                if (Test-Path -LiteralPath $dest) { $kept++ } else { Move-Item -LiteralPath $f.FullName $dest }
+            }
+            if (-not (Get-ChildItem -LiteralPath $old -Force)) { Remove-Item -LiteralPath $old; Log "Folder merged into the full character name: $old -> $new" }
+            else { Log "Folder merged into $new, except $kept file(s) whose names already exist there: $old" }
+        }
+    }
+}
+
 function Format-Played($sec) {
     if (-not $sec) { return $null }
     $t = [TimeSpan]::FromSeconds([double]$sec)
@@ -634,7 +678,7 @@ function File-Pending {
                     'quest'      { $destRoot = $questRoot;  $name = "$test$($e.Name) - $at$($f.Extension)" }
                     default      { $destRoot = $momentRoot; $name = "$test$($e.Kind) - $($e.Zone) - $at$($f.Extension)" }
                 }
-                $charDir = Join-Path $destRoot (Clean $e.Char)
+                $charDir = Join-Path $destRoot (Clean (Resolve-Char $e.Char))
                 New-Item -ItemType Directory -Force $charDir | Out-Null
                 Join-Path $charDir (Clean $name)
             }
@@ -676,21 +720,21 @@ function File-Copies {
         $test = if ($e.Test) { 'TEST ' } else { '' }
         $from, $to, $offset = -1, 4, 0.5   # seconds after the logged time the shot may be taken (the time is rounded down)
         if ($e.Kind -eq 'loot') {
-            $dir = Join-Path $lootRoot (Clean $e.Char)
+            $dir = Join-Path $lootRoot (Clean (Resolve-Char $e.Char))
             $name = "{0}{1} - {2} - {3:yyyy-MM-dd HH-mm-ss}.jpg" -f $test, $e.Item, $e.Zone, $e.When
         } elseif ($e.Kind -eq 'gear') {
-            $dir = Join-Path $gearRoot (Clean $e.Char)
+            $dir = Join-Path $gearRoot (Clean (Resolve-Char $e.Char))
             $name = "{0}Level {1:D2} - {2:yyyy-MM-dd HH-mm}.jpg" -f $test, [int]$e.Level, $e.When
         } elseif ($e.Kind -eq 'dingshot' -or $e.Kind -eq 'banner') {
             $played = Format-Played $e.Played
-            $dir = Join-Path $(if ($e.Kind -eq 'banner') { $bannerRoot } else { $instantRoot }) (Clean $e.Char)
+            $dir = Join-Path $(if ($e.Kind -eq 'banner') { $bannerRoot } else { $instantRoot }) (Clean (Resolve-Char $e.Char))
             $name = "{0}Level {1:D2} - {2}{3} - {4:yyyy-MM-dd HH-mm}.jpg" -f $test, [int]$e.Level, $e.Zone, ($(if ($played) { " - $played" } else { '' })), $e.When
             if ($e.Kind -eq 'banner') { $from, $to, $offset = 3.5, 8, 5.5 }
         } elseif ($e.Kind -eq 'bossshot' -or $e.Kind -eq 'rareshot') {
-            $dir = Join-Path $(if ($e.Kind -eq 'bossshot') { $bossRoot } else { $rareRoot }) (Clean $e.Char)
+            $dir = Join-Path $(if ($e.Kind -eq 'bossshot') { $bossRoot } else { $rareRoot }) (Clean (Resolve-Char $e.Char))
             $name = "{0}{1} - {2} - {3:yyyy-MM-dd HH-mm-ss}.jpg" -f $test, $e.Name, $e.Zone, $e.When
         } else {
-            $dir = Join-Path $zoneRoot (Clean $e.Char)
+            $dir = Join-Path $zoneRoot (Clean (Resolve-Char $e.Char))
             $name = "{0} - Level {1:D2} - {2:yyyy-MM-dd HH-mm}.jpg" -f $e.Zone, [int]$e.Level, $e.When
         }
         $dest = Join-Path $dir (Clean $name)
@@ -713,18 +757,31 @@ function Export-Diary {
     foreach ($sv in Get-ChildItem "$wow\_*_\WTF\Account\*\SavedVariables\DingCam.lua" -ErrorAction SilentlyContinue) {
         $block = [regex]::Match((Get-Content $sv.FullName -Raw -Encoding UTF8), '(?ms)^DingCamDiary = \{(.*?)^\}\s*$')
         if (-not $block.Success) { continue }
+        # One file per character, under its full name. An old first-name diary that the addon hasn't moved yet goes
+        # in front of the full-name one.
+        $byChar = [ordered]@{}
         foreach ($c in [regex]::Matches($block.Groups[1].Value, '\["((?:[^"\\]|\\.)*)"\]\s*=\s*\{([^{}]*)\}')) {
-            $char = Clean ($c.Groups[1].Value -replace '\\(.)', '$1')
-            $lines = [regex]::Matches($c.Groups[2].Value, '"((?:[^"\\]|\\.)*)"') | % { $_.Groups[1].Value -replace '\\(.)', '$1' }
+            $key = $c.Groups[1].Value -replace '\\(.)', '$1'
+            $char = Clean (Resolve-Char $key)
+            $lines = @([regex]::Matches($c.Groups[2].Value, '"((?:[^"\\]|\\.)*)"') | % { $_.Groups[1].Value -replace '\\(.)', '$1' })
             if (-not $lines) { continue }
+            if (-not $byChar.Contains($char)) { $byChar[$char] = @() }
+            if ($key -ne (Resolve-Char $key)) { $byChar[$char] = $lines + $byChar[$char] } else { $byChar[$char] = $byChar[$char] + $lines }
+        }
+        foreach ($char in $byChar.Keys) {
             New-Item -ItemType Directory -Force $diaryRoot | Out-Null
             $path = Join-Path $diaryRoot "$char.txt"
-            $text = ($lines -join "`r`n") + "`r`n"
-            if (-not (Test-Path $path) -or [IO.File]::ReadAllText($path) -ne $text) {
+            $text = ($byChar[$char] -join "`r`n") + "`r`n"
+            if (-not (Test-Path -LiteralPath $path) -or [IO.File]::ReadAllText($path) -ne $text) {
                 [IO.File]::WriteAllText($path, $text, (New-Object Text.UTF8Encoding($false)))
-                Log "Diary exported: $path ($(@($lines).Count) sessions)"
+                Log "Diary exported: $path ($(@($byChar[$char]).Count) sessions)"
             }
         }
+    }
+    # The old first-name diary file is replaced by the full-name one.
+    foreach ($first in @($script:nameMap.Keys)) {
+        $old = Join-Path $diaryRoot ((Clean $first) + '.txt'); $new = Join-Path $diaryRoot ((Clean $script:nameMap[$first]) + '.txt')
+        if ($old -ne $new -and (Test-Path -LiteralPath $old) -and (Test-Path -LiteralPath $new)) { Remove-Item -LiteralPath $old; Log "Old diary file replaced by $new" }
     }
 }
 
@@ -777,7 +834,7 @@ while ($true) {
         # (-Include silently matches nothing with wildcard folders in the path, so each name is listed on its own)
         $stamp = ('DingCam.lua', 'DingCamExtras.lua' | % { Get-ChildItem "$wow\_*_\WTF\Account\*\SavedVariables\$_" -ErrorAction SilentlyContinue } |
                   Measure LastWriteTime -Maximum).Maximum
-        if ($stamp -and $stamp -ne $svStamp) { $svStamp = $stamp; Start-Sleep -Milliseconds 500; Update-BigMoment; File-Pending; File-Copies; Export-Diary }
+        if ($stamp -and $stamp -ne $svStamp) { $svStamp = $stamp; Start-Sleep -Milliseconds 500; Update-BigMoment; Move-OldFolders; File-Pending; File-Copies; Export-Diary }
     }
   } catch { Log "Error (helper keeps running): $($_.Exception.Message)"; Start-Sleep -Seconds 2 }
 }

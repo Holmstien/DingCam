@@ -14,36 +14,43 @@ local _, ns = ...
 -- The switches (Options.lua loads first). If that file ever failed to load, everything simply stays on.
 local opt = ns.opt or function() return true end
 
--- The name DingCam files a character under: its first name, as always. WoW Forever characters also have a second name
--- (UnitName's second value), so two of your characters can share a first name (Confessor Faithforge and Confessor
--- Bankforge). The one already using the plain first name keeps it; any other gets its full name, so their folders and
--- diaries stay apart. DingCamNames remembers which character owns each plain first name.
+-- The name DingCam files a character under: its full name ("Confessor Faithforge"). WoW Forever characters have a
+-- second name (UnitName's second value) and only the full name is unique, so no two characters ever share a folder or
+-- a diary. Older versions (before 1.3.6) used the first name only. DingCamNames remembers which character those
+-- first-name folders and diary belong to, so the helper moves the folders to the full name and the diary carries on.
 local cachedKey
 local function charKey()
     if cachedKey then return cachedKey end
     local first, second = UnitName("player")
     if not first or first == "" then return first end
-    if not second or second == "" then cachedKey = first; return first end
+    if not second or second == "" then cachedKey = first; return first end   -- no second name: the first name, as always
     local full = first .. " " .. second
     DingCamNames = DingCamNames or {}
-    local owner = DingCamNames[first]
-    if not owner then
-        -- Not claimed yet (first login since 1.3.5). If moments saved under this first name reached a higher level than
-        -- this character has, they're another character's: leave the plain name to that one.
-        local top = 0
-        for _, list in ipairs({ DingCamDB, DingCamGear }) do
+    if not DingCamNames[first] then
+        -- Old moments saved under this first name are this character's, unless they reached a higher level than this
+        -- character has (then they're another character's with the same first name, which claims them when it logs in).
+        local top, found = 0, DingCamDiary and DingCamDiary[first] and true or false
+        for _, list in ipairs({ DingCamDB, DingCamGear, DingCamZones, DingCamLoot, DingCamEvents }) do
             if type(list) == "table" then
                 for _, e in ipairs(list) do
-                    if e.char == first and not e.test and (tonumber(e.level) or 0) > top then top = tonumber(e.level) end
+                    if e.char == first then
+                        found = true
+                        if not e.test and (tonumber(e.level) or 0) > top then top = tonumber(e.level) end
+                    end
                 end
             end
         end
-        if top > (UnitLevel("player") or 1) then cachedKey = full; return full end
-        DingCamNames[first] = full
-        owner = full
+        if found and top <= (UnitLevel("player") or 1) then DingCamNames[first] = full end
     end
-    cachedKey = (owner == full) and first or full
-    return cachedKey
+    -- The diary carries on under the full name (older entries first).
+    if DingCamNames[first] == full and DingCamDiary and DingCamDiary[first] then
+        local old = DingCamDiary[first]
+        DingCamDiary[first] = nil
+        DingCamDiary[full] = DingCamDiary[full] or {}
+        for i = #old, 1, -1 do table.insert(DingCamDiary[full], 1, old[i]) end
+    end
+    cachedKey = full
+    return full
 end
 ns.charKey = charKey
 DingCam_CharKey = charKey   -- DingCam Extras files its moments under the same name
@@ -69,8 +76,8 @@ end
 ns.helperRunning = helperRunning
 
 -- The oldest PC helper that knows everything this addon does (1.3.0: the on/off switches for clips, screenshots and
--- banners, and the Session Recap diary file). Raise it only when the addon needs a new helper.
-local HELPER_NEEDED = "1.3.0"
+-- banners, and the Session Recap diary file; 1.3.6: folders named with the full character name). Raise it only when the addon needs a new helper.
+local HELPER_NEEDED = "1.3.6"
 local function versionLess(a, b)   -- "1.2.1" < "1.3.0"; a "-dev" suffix is ignored
     local x, y = {}, {}
     for n in tostring(a):gmatch("%d+") do x[#x + 1] = tonumber(n) end
@@ -329,8 +336,8 @@ local function checkStatus()
               "(it opens when you log out, or type /dingcam recap), an |cffffff00on/off switch for every feature|r " ..
               "(type /dingcam), and a |cffffff00minimap button|r.")
         print("|cffe6b85cDingCam:|r your PC helper is version " .. old .. ". Update it to " .. HELPER_NEEDED ..
-              " so the new switches for clips and screenshots work fully and your session diary is also saved as a " ..
-              "text file. " .. UPDATE_HOW)
+              " so the new switches for clips and screenshots work fully, your session diary is also saved as a " ..
+              "text file, and your folders use your full character name. " .. UPDATE_HOW)
     end
     local rec = recorder()
     if not opt("warnings") then   -- switched off: no clip warnings (/dingcam status still reports them)
@@ -633,7 +640,7 @@ SlashCmdList.DINGCAM = function(msg)
             print("|cffe6b85cDingCam|r: the PC helper (version " .. (s.helperVersion or "?") .. ") is running. Moments are saved as clips.")
             if helperOutdated() then
                 print("|cffe6b85cDingCam|r: |cffffd100an update is available:|r helper " .. HELPER_NEEDED ..
-                      " is needed for the new on/off switches and the diary file. " .. UPDATE_HOW)
+                      " is needed for the new on/off switches, the diary file and full-name folders. " .. UPDATE_HOW)
             end
             local rec = recorder()
             print("|cffe6b85cDingCam|r: recording with " .. rec.name .. ": " .. (s.replayOff and ("|cffff4040OFF|r. To fix: " .. plain(rec.fix) .. ", then /reload")

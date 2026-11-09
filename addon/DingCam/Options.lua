@@ -87,7 +87,7 @@ local function refresh()
     local old = ns.helperOutdated and ns.helperOutdated()
     if old then
         status:SetText("|cff40ff40The PC helper is running|r (version " .. old .. "). |cffffd100Update it to " ..
-            ns.HELPER_NEEDED .. "|r for the clip and screenshot switches below and the diary file:\n" ..
+            ns.HELPER_NEEDED .. "|r for the switches below, the diary file and full-name folders:\n" ..
             "download it from github.com/Holmstien/DingCam and run Install DingCam again.")
     elseif ns.helperRunning and ns.helperRunning() then
         status:SetText("|cff40ff40The PC helper is running.|r Video clips are saved.")
