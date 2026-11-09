@@ -11,6 +11,9 @@
 
 local _, ns = ...
 local S   -- this session (DingCamRecap)
+local function key()   -- the name this character is filed under (DingCam.lua: the first name, or the full name if shared)
+    return (ns.charKey and ns.charKey()) or UnitName("player")
+end
 local function opt(key)   -- the switches (Options.lua); if that file ever failed to load, everything stays on
     if ns.opt then return ns.opt(key) end
     return true
@@ -52,7 +55,7 @@ end
 local function newSession()
     S = {
         start = time(), last = time(),
-        char = UnitName("player"),
+        char = key(),
         startLevel = UnitLevel("player"), level = UnitLevel("player"),
         xp = 0, lastXP = UnitXP("player"), lastXPMax = UnitXPMax("player"),
         startMoney = GetMoney(), lastMoney = GetMoney(),
@@ -267,20 +270,22 @@ f:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
                     for z in pairs(DingCamCharDB.zones) do DingCamRecapZones[z] = true end
                 end
             end
-            if isLogin or not DingCamRecap or DingCamRecap.char ~= UnitName("player") then
+            if isLogin or not DingCamRecap then   -- DingCamRecap is per character, so it's always this character's
                 local prev = DingCamRecap
+                if prev then prev.char = key() end   -- sessions saved before 1.3.5 have only the first name
                 finish(prev)           -- the previous session ends here
                 newSession()
                 -- Logging out in an inn or a city is instant, so the window never got a chance to open (shownAt is set
                 -- when it opens at logout; playing on for over a minute after that counts as not seen). Show that
                 -- session now instead, once the login messages have passed.
-                if prev and prev.start and prev.char == UnitName("player") and opt("recap") and opt("recapPopup")
+                if prev and prev.start and opt("recap") and opt("recapPopup")
                         and (prev.last or prev.start) - prev.start >= 60
                         and (not prev.shownAt or (prev.last or prev.shownAt) - prev.shownAt > 60) then
                     C_Timer.After(6, function() fill(prev, true) end)
                 end
             else
                 S = DingCamRecap       -- a /reload: same session continues
+                S.char = key()
             end
             S.lastXP, S.lastXPMax, S.lastMoney = UnitXP("player"), UnitXPMax("player"), GetMoney()
         end
@@ -319,7 +324,7 @@ end)
 -- /dingcam recap, /dingcam recap on|off, /dingcam diary (called from the /dingcam command in DingCam.lua).
 function ns.recapCommand(msg)
     if msg == "diary" then
-        local list = DingCamDiary and DingCamDiary[UnitName("player")]
+        local list = DingCamDiary and DingCamDiary[key()]
         if not list or #list == 0 then
             print("|cffe6b85cDingCam|r: no diary entries yet. One is written each time you log back in.")
             return

@@ -14,6 +14,40 @@ local _, ns = ...
 -- The switches (Options.lua loads first). If that file ever failed to load, everything simply stays on.
 local opt = ns.opt or function() return true end
 
+-- The name DingCam files a character under: its first name, as always. WoW Forever characters also have a second name
+-- (UnitName's second value), so two of your characters can share a first name (Confessor Faithforge and Confessor
+-- Bankforge). The one already using the plain first name keeps it; any other gets its full name, so their folders and
+-- diaries stay apart. DingCamNames remembers which character owns each plain first name.
+local cachedKey
+local function charKey()
+    if cachedKey then return cachedKey end
+    local first, second = UnitName("player")
+    if not first or first == "" then return first end
+    if not second or second == "" then cachedKey = first; return first end
+    local full = first .. " " .. second
+    DingCamNames = DingCamNames or {}
+    local owner = DingCamNames[first]
+    if not owner then
+        -- Not claimed yet (first login since 1.3.5). If moments saved under this first name reached a higher level than
+        -- this character has, they're another character's: leave the plain name to that one.
+        local top = 0
+        for _, list in ipairs({ DingCamDB, DingCamGear }) do
+            if type(list) == "table" then
+                for _, e in ipairs(list) do
+                    if e.char == first and not e.test and (tonumber(e.level) or 0) > top then top = tonumber(e.level) end
+                end
+            end
+        end
+        if top > (UnitLevel("player") or 1) then cachedKey = full; return full end
+        DingCamNames[first] = full
+        owner = full
+    end
+    cachedKey = (owner == full) and first or full
+    return cachedKey
+end
+ns.charKey = charKey
+DingCam_CharKey = charKey   -- DingCam Extras files its moments under the same name
+
 local GLOW_DELAY = 0.5   -- seconds after the ding for the glow screenshot (the golden column is fully up by then)
 local BANNER_DELAY = 5 -- seconds after the ding for the banner screenshot
 local savedFormat   -- the player's screenshot format, restored right after our shot
@@ -120,7 +154,7 @@ local function signal(level, isTest)
     local entry = {
         level = level,
         time = time(),
-        char = UnitName("player"),
+        char = charKey(),
         zone = GetRealZoneText() or "",
         played = currentPlayed(),
         test = isTest or nil,
@@ -150,7 +184,7 @@ local function killEvent(kind, name, isTest)
         kind = kind,
         name = name,
         time = time(),
-        char = UnitName("player"),
+        char = charKey(),
         zone = GetRealZoneText() or "",
         level = UnitLevel("player"),
         test = isTest or nil,
@@ -180,7 +214,7 @@ local function zoneCheck(delay)
     C_Timer.After(delay or ZONE_DELAY, function()
         normalShot(function()
             DingCamZones = DingCamZones or {}
-            table.insert(DingCamZones, { zone = zone, time = time(), char = UnitName("player"), level = UnitLevel("player") })
+            table.insert(DingCamZones, { zone = zone, time = time(), char = charKey(), level = UnitLevel("player") })
         end)
     end)
 end
@@ -317,7 +351,7 @@ local function checkStatus()
     -- At 59: the helper arms the "big moment" for the character it last saw at 59 (DingCamActive, saved on reload/logout).
     -- Armed for us (or we just reloaded from the popup) -> confirm, and nudge if the replay is short. Otherwise ask for a reload.
     if UnitLevel("player") == 59 and not s.replayOff and opt("bigMoment") then
-        local me = UnitName("player")
+        local me = charKey()
         local armed = (s.bigMoment and s.bigMomentChar == me) or (DingCamArmPending and time() - DingCamArmPending < 600)
         DingCamArmPending = nil
         if not armed then
@@ -387,7 +421,7 @@ function showNextLoot()
         item = name,
         quality = quality,
         time = time(),
-        char = UnitName("player"),
+        char = charKey(),
         zone = GetRealZoneText() or "",
         test = isTest or nil,
     })
@@ -496,7 +530,7 @@ local function gearShot(level, isTest)
     C_Timer.After(0.3, function()   -- lets the panel draw
         normalShot(function()
             DingCamGear = DingCamGear or {}
-            table.insert(DingCamGear, { level = level, time = time(), char = UnitName("player"), test = isTest or nil })
+            table.insert(DingCamGear, { level = level, time = time(), char = charKey(), test = isTest or nil })
             gearShooting = true
             gearTimer = C_Timer.NewTimer(2, gearDone)
         end)
@@ -533,7 +567,7 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
     elseif event == "PLAYER_LEVEL_UP" then
         signal(level)   -- checks the level-up switches
         -- nobig: the longer level 60 clip is switched off, so the helper doesn't arm it at 59
-        DingCamActive = { char = UnitName("player"), level = level, nobig = (not opt("bigMoment")) or nil }
+        DingCamActive = { char = charKey(), level = level, nobig = (not opt("bigMoment")) or nil }
         if level % GEAR_EVERY == 0 and opt("gearEvery") then C_Timer.After(GEAR_DELAY, function() gearShot(level) end) end
         if level == 59 and helperRunning() and opt("bigMoment") then C_Timer.After(BANNER_DELAY + 2, almost60) end   -- after the banner shot, so it never covers it
     elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight, or a panel left to close
@@ -557,7 +591,7 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
         if firstEnter then
             firstEnter = false
             -- who's playing (for the level 60 moment)
-            DingCamActive = { char = UnitName("player"), level = UnitLevel("player"), nobig = (not opt("bigMoment")) or nil }
+            DingCamActive = { char = charKey(), level = UnitLevel("player"), nobig = (not opt("bigMoment")) or nil }
             -- Safety net: if a session ever ended mid signal shot, put screenshots back to JPG (DingCam needs your shots non-TGA).
             if GetCVar("screenshotFormat") == "tga" then SetCVar("screenshotFormat", "jpeg") end
             C_Timer.After(8, checkStatus)   -- after the login spam, so it's noticed
