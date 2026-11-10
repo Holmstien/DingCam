@@ -40,7 +40,7 @@ DingCam Journey\
 | **Rare kill** | A clip and a screenshot, for rares that die while tagged to you. |
 | **Epic and rare loot** | The item's tooltip flashes mid-screen for a split second and is screenshotted. This covers blue and purple Bind-on-Equip drops in the world, and any blue or purple you receive in a dungeon or raid. |
 | **New zone** | A screenshot the first time each character enters a zone. |
-| **Your gear** | A screenshot of your character panel at level 1 and every 10 levels, taken once you're out of combat. |
+| **Your gear** | A screenshot of your character panel at level 1 and every 10 levels. DingCam asks you to press C and takes the shot when the panel opens. |
 | **Every session** | The Session Recap window at logout, and one diary line per session. |
 
 Each of these can be switched off in the settings window (`/dingcam`). Your own screenshots (Print Screen) are never moved, renamed or deleted.

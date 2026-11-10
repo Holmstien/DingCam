@@ -509,46 +509,55 @@ local function onLoot(msg, retried)
     if wanted then lootShot(link or itemString, simDungeon or nil) end
 end
 
--- Gear snapshots: at level 1 and every 10 levels, once you're out of combat, the character panel opens just long enough
--- to be screenshotted (normal format), then closes as soon as WoW reports the shot saved. Logged in DingCamGear; the
--- helper files the picture under Gear\<Character> at logout or /reload.
+-- Gear snapshots: at level 1 and every 10 levels. DingCam never opens the character panel itself: a Blizzard panel opened
+-- by addon code "taints" Blizzard's health bars, which then error on every update (health is a secret value in this
+-- client). Instead it asks you to press C, and takes the shot (normal format) the next time YOU open the panel, even
+-- after a /reload. Logged in DingCamGear; the helper files the picture under Gear\<Character> at logout or /reload.
 local GEAR_EVERY = 10
 local GEAR_DELAY = BANNER_DELAY + 1.5   -- seconds after a ding: after the banner shot, so they never collide
-local gearWaiting, gearOpened, gearShooting, gearTimer
+local gearWaiting, gearShooting
 
--- Closes the character panel DingCam opened. Never during a fight (a Blizzard panel toggled by an addon in combat can
--- be blocked): if a fight started in that split second, it closes as soon as the fight ends (PLAYER_REGEN_ENABLED).
-local gearCloseLater
-local function closeGearPanel()
-    if gearOpened and CharacterFrame:IsShown() then
-        if InCombatLockdown() then gearCloseLater = true; return end
-        ToggleCharacter("PaperDollFrame")
+local function gearDone() gearShooting = false end
+
+local function gearPending() return DingCamCharDB and DingCamCharDB.gearPending end
+
+-- Takes the pending gear shot; only called while the character panel is open (opened by the player).
+local function takeGearShot()
+    local p = gearPending()
+    if not p or gearShooting then return end
+    if lootBusy or savedFormat or (InCinematic and InCinematic()) then
+        C_Timer.After(0.5, function() if CharacterFrame and CharacterFrame:IsShown() then takeGearShot() end end)
+        return
     end
-    gearOpened = false
-end
-
-local function gearDone()
-    if not gearShooting then return end
-    gearShooting = false
-    if gearTimer then gearTimer:Cancel(); gearTimer = nil end
-    closeGearPanel()
+    gearShooting = true
+    normalShot(function()
+        DingCamCharDB.gearPending = nil
+        DingCamGear = DingCamGear or {}
+        table.insert(DingCamGear, { level = p.level, time = time(), char = charKey(), test = p.test })
+        C_Timer.After(2, gearDone)
+    end)
+    C_Timer.After(5, gearDone)   -- safety: never stay stuck if the shot never reports back
 end
 
 local function gearShot(level, isTest)
-    if InCombatLockdown() then gearWaiting = { level, isTest }; return end   -- PLAYER_REGEN_ENABLED picks it up
-    if lootBusy or savedFormat or gearShooting or gearCloseLater or (InCinematic and InCinematic()) then
-        C_Timer.After(0.5, function() gearShot(level, isTest) end)
-        return
+    if InCombatLockdown() then gearWaiting = { level, isTest }; return end   -- asked after the fight (PLAYER_REGEN_ENABLED)
+    DingCamCharDB = DingCamCharDB or {}
+    DingCamCharDB.gearPending = { level = level, test = isTest or nil }
+    if CharacterFrame and CharacterFrame:IsShown() then
+        C_Timer.After(0.3, takeGearShot)
+    else
+        print("|cffe6b85cDingCam|r: " .. (isTest and "test gear snapshot: " or ("level " .. level .. " gear snapshot: ")) ..
+              "press |cffffd100C|r (or open your character panel) and DingCam saves a picture of your gear.")
     end
-    gearOpened = not CharacterFrame:IsShown()
-    if gearOpened then ToggleCharacter("PaperDollFrame") end
-    C_Timer.After(0.3, function()   -- lets the panel draw
-        normalShot(function()
-            DingCamGear = DingCamGear or {}
-            table.insert(DingCamGear, { level = level, time = time(), char = charKey(), test = isTest or nil })
-            gearShooting = true
-            gearTimer = C_Timer.NewTimer(2, gearDone)
-        end)
+end
+
+-- Hooked after Blizzard's own code runs, so it never taints the panel. Set up at login (the panel exists by then).
+local gearHooked
+local function hookGearPanel()
+    if gearHooked or not CharacterFrame then return end
+    gearHooked = true
+    CharacterFrame:HookScript("OnShow", function()
+        if gearPending() then C_Timer.After(0.3, takeGearShot) end   -- lets the panel draw
     end)
 end
 
@@ -585,8 +594,7 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
         DingCamActive = { char = charKey(), level = level, nobig = (not opt("bigMoment")) or nil }
         if level % GEAR_EVERY == 0 and opt("gearEvery") then C_Timer.After(GEAR_DELAY, function() gearShot(level) end) end
         if level == 59 and helperRunning() and opt("bigMoment") then C_Timer.After(BANNER_DELAY + 2, almost60) end   -- after the banner shot, so it never covers it
-    elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight, or a panel left to close
-        if gearCloseLater then gearCloseLater = nil; closeGearPanel() end
+    elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight: ask after the fight
         if gearWaiting then
             local g = gearWaiting
             gearWaiting = nil
@@ -614,6 +622,14 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
             C_Timer.After(5, function() if not playedBase and opt("played") then RequestTimePlayed() end end)
             if opt("zones") then zoneCheck(3) end   -- a brand-new character's first zone (after the loading screen)
             DingCamCharDB = DingCamCharDB or {}
+            hookGearPanel()
+            local p = DingCamCharDB.gearPending
+            if p then   -- a gear snapshot still waiting from before the /reload or logout
+                C_Timer.After(14, function()
+                    if gearPending() then print("|cffe6b85cDingCam|r: your level " .. p.level ..
+                        " gear snapshot is still waiting: press |cffffd100C|r (or open your character panel).") end
+                end)
+            end
             if UnitLevel("player") == 1 and not DingCamCharDB.gearStart and opt("gearStart") then   -- starting gear, once per character
                 DingCamCharDB.gearStart = true
                 C_Timer.After(12, function() gearShot(1) end)   -- after the login messages and the zone shot
@@ -688,7 +704,7 @@ SlashCmdList.DINGCAM = function(msg)
             C_Timer.After(2, function() simDungeon = false end)
         end
     elseif msg == "gear" then   -- test the gear snapshot
-        print("|cffe6b85cDingCam|r: test gear snapshot" .. (InCombatLockdown() and " after this fight." or " now."))
+        if InCombatLockdown() then print("|cffe6b85cDingCam|r: test gear snapshot after this fight.") end
         gearShot(UnitLevel("player"), true)
     elseif msg == "zone" then   -- re-take the first-visit shot for the zone you're in
         local zone = GetRealZoneText()
