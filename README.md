@@ -10,6 +10,8 @@ https://github.com/user-attachments/assets/4ebc6576-b646-4b1e-b6d6-33a7db82093f
 
 *DingCam saved every moment in this video automatically; the edit and music were made afterwards.*
 
+**Want the video clips too?** They come from a small free helper for your PC: [download it from Releases](https://github.com/Holmstien/DingCam/releases/latest), unzip it and double-click **Install DingCam**.
+
 ![A level-up caught by DingCam](media/ding.gif)
 
 *The clip DingCam saved on its own at a level 20 ding in Thunder Bluff ([full 10-second clip](media/ding.mp4)).*
