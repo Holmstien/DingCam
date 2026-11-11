@@ -1,20 +1,12 @@
 # DingCam
 
-**Your WoW Forever journey, recorded automatically.** Every level-up, boss kill, rare kill, epic drop and new zone is saved as a video clip or screenshot, then filed by character, without you pressing anything.
-
-*Video clips come from a small open-source companion app that runs on your PC (see [How it works](#how-it-works)). The addon on its own saves screenshots.*
-
-**Levels 1 to 24 of one character, cut together from the clips and screenshots DingCam saved on its own:**
-
 https://github.com/user-attachments/assets/4ebc6576-b646-4b1e-b6d6-33a7db82093f
 
-*DingCam saved every moment in this video automatically; the edit and music were made afterwards.*
+*Levels 1 to 24 of one character, cut together from the clips and screenshots DingCam saved on its own (the edit and music were made afterwards).*
 
-**Want the video clips too?** They come from a small free helper for your PC: [download it from Releases](https://github.com/Holmstien/DingCam/releases/latest), unzip it and double-click **Install DingCam**.
+**Your WoW Forever journey, recorded automatically.** Every level-up, boss kill, rare kill, epic drop and new zone is saved as a video clip or screenshot, then filed by character, without you pressing anything.
 
-![A level-up caught by DingCam](media/ding.gif)
-
-*The clip DingCam saved on its own at a level 20 ding in Thunder Bluff ([full 10-second clip](media/ding.mp4)).*
+**Want the video clips too?** They come from a small free helper for your PC: [download it from Releases](https://github.com/Holmstien/DingCam/releases/latest), unzip it and double-click **Install DingCam** (see [How it works](#how-it-works)). Without it, the addon still saves all the screenshots.
 
 | The golden glow | The banner | A blue drop in a dungeon |
 |---|---|---|
