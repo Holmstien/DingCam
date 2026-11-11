@@ -4,6 +4,12 @@
 
 *Video clips come from a small open-source companion app that runs on your PC (see [How it works](#how-it-works)). The addon on its own saves screenshots.*
 
+**Levels 1 to 24 of one character, cut together from the clips and screenshots DingCam saved on its own:**
+
+https://github.com/user-attachments/assets/27902499-d3cf-47d8-8688-0e4e52779677
+
+*DingCam saved every moment in this video automatically; the edit and music were made afterwards.*
+
 ![A level-up caught by DingCam](media/ding.gif)
 
 *The clip DingCam saved on its own at a level 3 ding ([full 10-second clip](media/ding.mp4)).*
