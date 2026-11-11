@@ -287,13 +287,15 @@ local function showDialog(text, button1, onButton1, button2, onButton2)
     if d.Raise then d:Raise() end
 end
 
--- Level 59: one level to go. Popup (after the banner shot) asking for a longer replay, then Reload UI to arm DingCam.
-local ALMOST60_TEXT = "|cffffd100One level to go!|r\n\nYour level 60 moment deserves the full story.\n\nFor a longer clip, %s.\nThen click |cffffff00Reload UI|r and DingCam will film your 60 ding with extra time for the celebration."
+-- Level 59: one level to go. Popup (after the banner shot) asking for a longer replay, then a /reload to arm DingCam.
+-- WoW Forever blocks addons from calling ReloadUI() (ADDON_ACTION_BLOCKED, 1.3.9), so the player types /reload.
+local ALMOST60_TEXT = "|cffffd100One level to go!|r\n\nYour level 60 moment deserves the full story.\n\nFor a longer clip, %s.\nThen type |cffffff00/reload|r and DingCam will film your 60 ding with extra time for the celebration."
 local function almost60()
     RaidNotice_AddMessage(RaidWarningFrame, "DingCam: one level to go! Get ready for 60.", { r = 1, g = 0.82, b = 0 })
     PlaySound(SOUNDKIT and SOUNDKIT.READY_CHECK or 8960)
     -- the reload saves DingCamActive, which arms the helper
-    showDialog(ALMOST60_TEXT:format(recorder().length), "Reload UI", function() DingCamArmPending = time(); ReloadUI() end, "Later")
+    DingCamArmPending = time()
+    showDialog(ALMOST60_TEXT:format(recorder().length), "Got it")
 end
 
 -- Warning at login/reload if the PC helper (via Status.lua) reports the recorder off or a failed clip.
@@ -303,10 +305,10 @@ local function warn(text)
     PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959)
 end
 
--- The recorder warning popup, with a Reload UI button.
+-- The recorder warning popup. No Reload button: WoW Forever blocks ReloadUI() from addons, so the player types /reload.
 local function warningDialog(what, fix)
-    showDialog("|cffe6b85cDingCam|r\n\n" .. what .. "\n\nTo fix: " .. fix .. ".\nThen click |cffffff00Reload UI|r.",
-               "Reload UI", function() ReloadUI() end, "Later")
+    showDialog("|cffe6b85cDingCam|r\n\n" .. what .. "\n\nTo fix: " .. fix .. ".\nThen type |cffffff00/reload|r.",
+               "Got it")
 end
 
 -- No helper on the PC (never installed, or not running): moments are still saved, as normal screenshots.
