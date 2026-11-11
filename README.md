@@ -6,7 +6,7 @@
 
 **Levels 1 to 24 of one character, cut together from the clips and screenshots DingCam saved on its own:**
 
-https://github.com/user-attachments/assets/27902499-d3cf-47d8-8688-0e4e52779677
+https://github.com/user-attachments/assets/4ebc6576-b646-4b1e-b6d6-33a7db82093f
 
 *DingCam saved every moment in this video automatically; the edit and music were made afterwards.*
 
