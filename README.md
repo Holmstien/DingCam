@@ -12,11 +12,15 @@ https://github.com/user-attachments/assets/4ebc6576-b646-4b1e-b6d6-33a7db82093f
 
 ![A level-up caught by DingCam](media/ding.gif)
 
-*The clip DingCam saved on its own at a level 3 ding ([full 10-second clip](media/ding.mp4)).*
+*The clip DingCam saved on its own at a level 20 ding in Thunder Bluff ([full 10-second clip](media/ding.mp4)).*
 
-| The golden glow | The banner | A loot flash mid-raid |
+| The golden glow | The banner | A blue drop in a dungeon |
 |---|---|---|
 | ![Golden glow](media/glow.jpg) | ![Level-up banner](media/banner.jpg) | ![Loot flash](media/loot.jpg) |
+
+![A DingCam gear card](media/gear.jpg)
+
+*A gear card: at level 1 and every 10 levels, DingCam shows your character and everything you're wearing for a moment and saves it.*
 
 ```
 DingCam Journey\
@@ -29,6 +33,7 @@ DingCam Journey\
 
 ## New in 1.3
 
+- **Gear cards** (1.3.10). The level 1 and every-10-levels gear shot is now DingCam's own card with your model and all your gear, saved automatically: nothing to press.
 - **Folders use the full character name** (1.3.6), like `Level-ups\Grimbold Stonefist`. In WoW Forever only the full name is unique, so two characters never share a folder. When you update the helper, your existing folders are moved to the full name automatically (merged if needed, nothing is overwritten).
 
 - **Session Recap.** When you log out, a window shows what that play session added up to: time played, levels, XP, gold (looted, quest rewards, sold, spent), quests completed, best loot, new zones, bosses, rares, deaths and the zone you spent most time in. Each session also becomes one line in a diary per character (`/dingcam diary` shows the last five). `/dingcam recap` shows the current session any time. A `/reload` doesn't end a session; logging out, quitting or a crash does, and the diary line is written when you next log in. With the helper, the diary is also saved as `Diary\<Character full name>.txt` in your Journey folder.
@@ -46,7 +51,7 @@ DingCam Journey\
 | **Rare kill** | A clip and a screenshot, for rares that die while tagged to you. |
 | **Epic and rare loot** | The item's tooltip flashes mid-screen for a split second and is screenshotted. This covers blue and purple Bind-on-Equip drops in the world, and any blue or purple you receive in a dungeon or raid. |
 | **New zone** | A screenshot the first time each character enters a zone. |
-| **Your gear** | A screenshot of your character panel at level 1 and every 10 levels. DingCam asks you to press C and takes the shot when the panel opens. |
+| **Your gear** | A gear card at level 1 and every 10 levels: your character's 3D model and every item you're wearing, colored by quality, with your level, zone and /played. It pops up for a moment and is saved on its own (after the fight, if you're in one). |
 | **Every session** | The Session Recap window at logout, and one diary line per session. |
 
 Each of these can be switched off in the settings window (`/dingcam`). Your own screenshots (Print Screen) are never moved, renamed or deleted.

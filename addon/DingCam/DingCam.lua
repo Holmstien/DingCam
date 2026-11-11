@@ -254,7 +254,10 @@ local function plain(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
 -- leave that popup "tainted", and a later Blizzard popup that does a protected action (release spirit, confirmations)
 -- then gets blocked with "DingCam has been blocked from an action only available to the Blizzard UI".
 local dialog
+local reloadBtn, reloadDialogOpen   -- the secure Reload UI button; see showReloadButton below
 local function showDialog(text, button1, onButton1, button2, onButton2)
+    reloadDialogOpen = nil
+    if reloadBtn and reloadBtn:IsShown() and not InCombatLockdown() then reloadBtn:Hide() end
     if not dialog then
         local ok, d = pcall(CreateFrame, "Frame", "DingCamDialog", UIParent, "BasicFrameTemplateWithInset")
         if not ok then d = CreateFrame("Frame", "DingCamDialog", UIParent, "BackdropTemplate") end
@@ -287,15 +290,83 @@ local function showDialog(text, button1, onButton1, button2, onButton2)
     if d.Raise then d:Raise() end
 end
 
+-- A real "Reload UI" button. WoW Forever blocks ReloadUI() from addon code (1.3.9), but a secure macro button that
+-- runs /reload is the same as the player typing it. Secure frames can't be shown, hidden or moved in combat, so:
+--  * it is parented to UIParent (NOT the dialog), so the dialog itself stays a plain frame (Escape, dragging, hiding);
+--  * it is only shown out of combat, laid over the dialog's first button, and hidden again on PLAYER_REGEN_DISABLED
+--    (that event still allows changes) and whenever the dialog closes or moves;
+--  * no PreClick or other addon code runs on the click, so the /reload stays untainted.
+-- If anything is off, the dialog's own "Got it" button and the "/reload" text are always there underneath.
+local function soloButton()   -- the plain layout: one "Got it" button in the middle
+    local b = dialog.b1
+    b:ClearAllPoints(); b:SetPoint("BOTTOM", 0, 16); b:SetText("Got it")
+end
+local function hideReloadButton()
+    if reloadBtn and reloadBtn:IsShown() and not InCombatLockdown() then reloadBtn:Hide() end
+end
+local function showReloadButton()
+    if InCombatLockdown() or not reloadDialogOpen or not dialog or not dialog:IsShown() then return end
+    if not reloadBtn then
+        local ok, btn = pcall(CreateFrame, "Button", "DingCamReloadButton", UIParent, "SecureActionButtonTemplate,UIPanelButtonTemplate")
+        if not ok or not btn then return end
+        reloadBtn = btn
+        reloadBtn:SetAttribute("type", "macro")
+        reloadBtn:SetAttribute("macrotext", "/reload")   -- set again for each dialog (out of combat)
+        reloadBtn:RegisterForClicks("AnyUp", "AnyDown")
+        reloadBtn:SetText("Reload UI")
+        reloadBtn:SetFrameStrata("FULLSCREEN_DIALOG")
+        reloadBtn:Hide()
+        local ev = CreateFrame("Frame")
+        ev:RegisterEvent("PLAYER_REGEN_DISABLED")   -- fires just before combat lockdown, so the secure button can still be hidden
+        ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+        ev:SetScript("OnEvent", function(_, event)
+            if event == "PLAYER_REGEN_DISABLED" then
+                if reloadBtn:IsShown() then reloadBtn:Hide() end
+                if reloadDialogOpen and dialog:IsShown() then soloButton() end
+            else
+                C_Timer.After(0.2, showReloadButton)
+            end
+        end)
+        -- Follow the dialog without hooking it (Escape closes the dialog from Blizzard code, which DingCam must not touch):
+        -- while shown (only ever out of combat), hide when the dialog is gone and follow it when it's dragged.
+        reloadBtn:SetScript("OnUpdate", function(self)
+            if InCombatLockdown() then return end
+            if not reloadDialogOpen or not dialog:IsShown() then reloadDialogOpen = nil; self:Hide(); return end
+            local l, bt = dialog:GetLeft(), dialog:GetBottom()
+            if l ~= self.dl or bt ~= self.db then self.dl, self.db = l, bt; showReloadButton() end
+        end)
+    end
+    -- two buttons: the secure action on the left, the dialog's own button (now "Later") on the right
+    reloadBtn:SetAttribute("macrotext", reloadDialogOpen.macro)
+    reloadBtn:SetText(reloadDialogOpen.label)
+    local d, b = dialog, dialog.b1
+    b:ClearAllPoints(); b:SetPoint("BOTTOMLEFT", d, "BOTTOM", 6, 16); b:SetText("Later")
+    local s = d:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    local l, bt, w = d:GetLeft(), d:GetBottom(), d:GetWidth()
+    if not l or not bt or not w then soloButton(); return end
+    reloadBtn:ClearAllPoints()
+    reloadBtn:SetSize(140 * s, 24 * s)
+    reloadBtn:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", (l + w / 2 - 6 - 140) * s, (bt + 16) * s)
+    reloadBtn:Show()
+end
+-- A dialog with a secure action: "Got it" plus the typed alternative in the text always; the action button out of combat.
+local function showActionDialog(text, label, macro)
+    hideReloadButton()
+    showDialog(text, "Got it")
+    reloadDialogOpen = { label = label, macro = macro }
+    C_Timer.After(0, showReloadButton)
+end
+local function showReloadDialog(text) showActionDialog(text, "Reload UI", "/reload") end
+
 -- Level 59: one level to go. Popup (after the banner shot) asking for a longer replay, then a /reload to arm DingCam.
 -- WoW Forever blocks addons from calling ReloadUI() (ADDON_ACTION_BLOCKED, 1.3.9), so the player types /reload.
-local ALMOST60_TEXT = "|cffffd100One level to go!|r\n\nYour level 60 moment deserves the full story.\n\nFor a longer clip, %s.\nThen type |cffffff00/reload|r and DingCam will film your 60 ding with extra time for the celebration."
+local ALMOST60_TEXT = "|cffffd100One level to go!|r\n\nYour level 60 moment deserves the full story.\n\nFor a longer clip, %s.\nThen click |cffffff00Reload UI|r (or type |cffffff00/reload|r) and DingCam will film your 60 ding with extra time for the celebration."
 local function almost60()
     RaidNotice_AddMessage(RaidWarningFrame, "DingCam: one level to go! Get ready for 60.", { r = 1, g = 0.82, b = 0 })
     PlaySound(SOUNDKIT and SOUNDKIT.READY_CHECK or 8960)
     -- the reload saves DingCamActive, which arms the helper
     DingCamArmPending = time()
-    showDialog(ALMOST60_TEXT:format(recorder().length), "Got it")
+    showReloadDialog(ALMOST60_TEXT:format(recorder().length))
 end
 
 -- Warning at login/reload if the PC helper (via Status.lua) reports the recorder off or a failed clip.
@@ -305,10 +376,9 @@ local function warn(text)
     PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959)
 end
 
--- The recorder warning popup. No Reload button: WoW Forever blocks ReloadUI() from addons, so the player types /reload.
+-- The recorder warning popup, with the secure Reload UI button out of combat.
 local function warningDialog(what, fix)
-    showDialog("|cffe6b85cDingCam|r\n\n" .. what .. "\n\nTo fix: " .. fix .. ".\nThen type |cffffff00/reload|r.",
-               "Got it")
+    showReloadDialog("|cffe6b85cDingCam|r\n\n" .. what .. "\n\nTo fix: " .. fix .. ".\nThen click |cffffff00Reload UI|r (or type |cffffff00/reload|r).")
 end
 
 -- No helper on the PC (never installed, or not running): moments are still saved, as normal screenshots.
@@ -511,10 +581,11 @@ local function onLoot(msg, retried)
     if wanted then lootShot(link or itemString, simDungeon or nil) end
 end
 
--- Gear snapshots: at level 1 and every 10 levels. DingCam never opens the character panel itself: a Blizzard panel opened
--- by addon code "taints" Blizzard's health bars, which then error on every update (health is a secret value in this
--- client). Instead it asks you to press C, and takes the shot (normal format) the next time YOU open the panel, even
--- after a /reload. Logged in DingCamGear; the helper files the picture under Gear\<Character> at logout or /reload.
+-- Gear snapshots: at level 1 and every 10 levels. Since 1.3.10 DingCam shows its OWN gear card (your 3D model and every
+-- equipped item), screenshots it and closes it: nothing to press. It never opens Blizzard's character panel: a Blizzard
+-- panel opened by addon code "taints" Blizzard's health bars, which then error on every update (health is a secret
+-- value in this client; that was the 1.3.8 "Fatality" loop). Logged in DingCamGear; the helper files the picture under
+-- Gear\<Character> at logout or /reload. A shot that comes due mid-fight waits for the fight to end.
 local GEAR_EVERY = 10
 local GEAR_DELAY = BANNER_DELAY + 1.5   -- seconds after a ding: after the banner shot, so they never collide
 local gearWaiting, gearShooting
@@ -523,44 +594,126 @@ local function gearDone() gearShooting = false end
 
 local function gearPending() return DingCamCharDB and DingCamCharDB.gearPending end
 
--- Takes the pending gear shot; only called while the character panel is open (opened by the player).
+local SLOTS_LEFT   = { 1, 2, 3, 15, 5, 4, 19, 9 }     -- head, neck, shoulder, back, chest, shirt, tabard, wrist
+local SLOTS_RIGHT  = { 10, 6, 7, 8, 11, 12, 13, 14 }  -- hands, waist, legs, feet, two rings, two trinkets
+local SLOTS_BOTTOM = { 16, 17, 18 }                   -- main hand, off hand, ranged
+local CARD_W, CARD_H = 840, 580
+local function plainValue(v)   -- nil for anything this client hides from addons
+    if v == nil or (issecretvalue and issecretvalue(v)) then return nil end
+    return v
+end
+
+local card
+local function buildCard()
+    local c = CreateFrame("Frame", "DingCamGearCard", UIParent, "BackdropTemplate")
+    c:SetSize(CARD_W, CARD_H); c:SetPoint("CENTER", 0, 20)
+    c:SetFrameStrata("FULLSCREEN_DIALOG"); c:SetClampedToScreen(true)
+    c:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    c:SetBackdropColor(0.04, 0.04, 0.06, 0.95)
+    c:SetBackdropBorderColor(0.9, 0.72, 0.36)
+    c.title = c:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge"); c.title:SetPoint("TOP", 0, -18)
+    c.sub = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight"); c.sub:SetPoint("TOP", c.title, "BOTTOM", 0, -6)
+    c.model = CreateFrame("PlayerModel", nil, c); c.model:SetSize(280, 400); c.model:SetPoint("TOP", 0, -64)
+    c.footer = c:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"); c.footer:SetPoint("BOTTOM", 0, 14)
+    c.slots = {}
+    local function slot(id, x, y, side)
+        local s = CreateFrame("Frame", nil, c); s:SetSize(36, 36); s:SetPoint("TOPLEFT", c, "TOPLEFT", x, y)
+        s.icon = s:CreateTexture(nil, "ARTWORK"); s.icon:SetAllPoints()
+        s.glow = s:CreateTexture(nil, "OVERLAY"); s.glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+        s.glow:SetBlendMode("ADD"); s.glow:SetSize(66, 66); s.glow:SetPoint("CENTER")
+        s.name = s:CreateFontString(nil, "OVERLAY", "GameFontNormal"); s.name:SetWordWrap(true)
+        if side == "right" then
+            s.name:SetWidth(210); s.name:SetPoint("RIGHT", s, "LEFT", -8, 0); s.name:SetJustifyH("RIGHT")
+        elseif side == "left" then
+            s.name:SetWidth(210); s.name:SetPoint("LEFT", s, "RIGHT", 8, 0); s.name:SetJustifyH("LEFT")
+        else
+            s.name:SetWidth(150); s.name:SetPoint("LEFT", s, "RIGHT", 8, 0); s.name:SetJustifyH("LEFT")
+        end
+        s.id = id; c.slots[#c.slots + 1] = s
+    end
+    for i, id in ipairs(SLOTS_LEFT) do slot(id, 22, -64 - (i - 1) * 50, "left") end
+    for i, id in ipairs(SLOTS_RIGHT) do slot(id, CARD_W - 22 - 36, -64 - (i - 1) * 50, "right") end
+    for i, id in ipairs(SLOTS_BOTTOM) do slot(id, 150 + (i - 1) * 200, -478, "bottom") end
+    c:Hide()
+    return c
+end
+
+local function playedLabel()
+    local s = currentPlayed()
+    if not s then return nil end
+    local d, h, m = math.floor(s / 86400), math.floor(s % 86400 / 3600), math.floor(s % 3600 / 60)
+    return d > 0 and ("%dd %dh played"):format(d, h) or ("%dh %dm played"):format(h, m)
+end
+
+local function fillCard(level)
+    local c = card
+    c.title:SetText(charKey())
+    local cls = plainValue((UnitClass("player")))
+    local zone = plainValue(GetRealZoneText()) or ""
+    local parts = { "Level " .. level .. (cls and (" " .. cls) or "") }
+    if zone ~= "" then parts[#parts + 1] = zone end
+    local pl = playedLabel(); if pl then parts[#parts + 1] = pl end
+    c.sub:SetText(table.concat(parts, "  -  "))
+    c.footer:SetText("Saved by DingCam  -  " .. date("%d %b %Y"))
+    pcall(function() c.model:SetUnit("player"); c.model:SetFacing(0.35) end)
+    for _, s in ipairs(c.slots) do
+        local link = plainValue(GetInventoryItemLink("player", s.id))
+        local tex = plainValue(GetInventoryItemTexture("player", s.id))
+        local q = plainValue(GetInventoryItemQuality("player", s.id))
+        local name = link and link:match("%[(.-)%]")
+        s.icon:SetTexture(tex or "Interface\\PaperDoll\\UI-Backpack-EmptySlot")
+        s.icon:SetDesaturated(not tex)
+        s.icon:SetAlpha(tex and 1 or 0.35)
+        local r, g, b = 1, 1, 1
+        if q and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q] then r, g, b = ITEM_QUALITY_COLORS[q].r, ITEM_QUALITY_COLORS[q].g, ITEM_QUALITY_COLORS[q].b end
+        s.name:SetText(name or "")
+        -- a little lighter than the tooltip colours, so blues and purples read well on the dark card
+        s.name:SetTextColor(r + (1 - r) * 0.3, g + (1 - g) * 0.3, b + (1 - b) * 0.3)
+        if q and q >= 2 then s.glow:SetVertexColor(r, g, b); s.glow:Show() else s.glow:Hide() end
+    end
+end
+
+-- Shows the card, waits for the 3D model to load, takes the picture (normal format), closes the card.
 local function takeGearShot()
     local p = gearPending()
     if not p or gearShooting then return end
+    if InCombatLockdown() then gearWaiting = { p.level, p.test }; return end
     if lootBusy or savedFormat or (InCinematic and InCinematic()) then
-        C_Timer.After(0.5, function() if CharacterFrame and CharacterFrame:IsShown() then takeGearShot() end end)
+        C_Timer.After(0.5, takeGearShot)
         return
     end
+    if not card then
+        local ok, c = pcall(buildCard)
+        if not ok or not c then print("|cffe6b85cDingCam|r: couldn't build the gear card (" .. tostring(c) .. ")."); return end
+        card = c
+    end
     gearShooting = true
-    normalShot(function()
-        DingCamCharDB.gearPending = nil
-        DingCamGear = DingCamGear or {}
-        table.insert(DingCamGear, { level = p.level, time = time(), char = charKey(), test = p.test })
-        C_Timer.After(2, gearDone)
+    local ok, err = pcall(fillCard, p.level)
+    if not ok then print("|cffe6b85cDingCam|r: gear card problem (" .. tostring(err) .. ").") end
+    -- about three quarters of the screen height, whatever the UI scale, so the card is the picture
+    local h = UIParent:GetHeight()
+    card:SetScale(math.max(1, math.min(1.8, (h and h > 0) and (h * 0.75 / CARD_H) or 1.25)))
+    card:Show()
+    C_Timer.After(1.2, function()   -- the model and item icons need a moment to load
+        if not card:IsShown() then gearShooting = false; return end
+        normalShot(function()
+            DingCamCharDB.gearPending = nil
+            DingCamGear = DingCamGear or {}
+            table.insert(DingCamGear, { level = p.level, time = time(), char = charKey(), test = p.test })
+            C_Timer.After(0.6, function() card:Hide() end)
+            C_Timer.After(2, gearDone)
+            print("|cffe6b85cDingCam|r: " .. (p.test and "test gear card saved." or ("level " .. p.level .. " gear card saved.")))
+        end)
     end)
-    C_Timer.After(5, gearDone)   -- safety: never stay stuck if the shot never reports back
+    C_Timer.After(8, function() if card and card:IsShown() then card:Hide() end; gearDone() end)   -- safety
 end
 
 local function gearShot(level, isTest)
-    if InCombatLockdown() then gearWaiting = { level, isTest }; return end   -- asked after the fight (PLAYER_REGEN_ENABLED)
+    if InCombatLockdown() then gearWaiting = { level, isTest }; return end   -- taken after the fight (PLAYER_REGEN_ENABLED)
     DingCamCharDB = DingCamCharDB or {}
     DingCamCharDB.gearPending = { level = level, test = isTest or nil }
-    if CharacterFrame and CharacterFrame:IsShown() then
-        C_Timer.After(0.3, takeGearShot)
-    else
-        print("|cffe6b85cDingCam|r: " .. (isTest and "test gear snapshot: " or ("level " .. level .. " gear snapshot: ")) ..
-              "press |cffffd100C|r (or open your character panel) and DingCam saves a picture of your gear.")
-    end
-end
-
--- Hooked after Blizzard's own code runs, so it never taints the panel. Set up at login (the panel exists by then).
-local gearHooked
-local function hookGearPanel()
-    if gearHooked or not CharacterFrame then return end
-    gearHooked = true
-    CharacterFrame:HookScript("OnShow", function()
-        if gearPending() then C_Timer.After(0.3, takeGearShot) end   -- lets the panel draw
-    end)
+    C_Timer.After(0.2, takeGearShot)
 end
 
 local f = CreateFrame("Frame")
@@ -624,13 +777,9 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
             C_Timer.After(5, function() if not playedBase and opt("played") then RequestTimePlayed() end end)
             if opt("zones") then zoneCheck(3) end   -- a brand-new character's first zone (after the loading screen)
             DingCamCharDB = DingCamCharDB or {}
-            hookGearPanel()
             local p = DingCamCharDB.gearPending
-            if p then   -- a gear snapshot still waiting from before the /reload or logout
-                C_Timer.After(14, function()
-                    if gearPending() then print("|cffe6b85cDingCam|r: your level " .. p.level ..
-                        " gear snapshot is still waiting: press |cffffd100C|r (or open your character panel).") end
-                end)
+            if p then   -- a gear snapshot still waiting from before the /reload or logout (e.g. an older DingCam asked for C)
+                C_Timer.After(14, function() if gearPending() then gearShot(p.level, p.test) end end)
             end
             if UnitLevel("player") == 1 and not DingCamCharDB.gearStart and opt("gearStart") then   -- starting gear, once per character
                 DingCamCharDB.gearStart = true
