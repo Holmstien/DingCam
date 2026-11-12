@@ -200,6 +200,7 @@ local function tooltip(self)
     end
     GameTooltip:AddLine("Left-click: settings", 1, 1, 1)
     GameTooltip:AddLine("Right-click: session recap", 1, 1, 1)
+    GameTooltip:AddLine("Shift-click: gear card", 1, 1, 1)
     GameTooltip:AddLine("Drag: move this button", 0.7, 0.7, 0.7)
     GameTooltip:Show()
 end
@@ -239,6 +240,8 @@ function ns.minimapButton()
     mini:SetScript("OnClick", function(_, button)
         if button == "RightButton" then
             if ns.recapCommand then ns.recapCommand("recap") end
+        elseif IsShiftKeyDown() and ns.viewCard then
+            ns.viewCard()
         else
             ns.toggleOptions()
         end

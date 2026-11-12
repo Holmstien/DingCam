@@ -28,11 +28,12 @@ DingCam Journey\
 ## New in 1.3
 
 - **Gear cards** (1.3.10). The level 1 and every-10-levels gear shot is now DingCam's own card with your model and all your gear, saved automatically: nothing to press.
+  Since 1.3.11 you can also open it any time with `/dingcam card` or Shift-click on the minimap button, just to look.
 - **Folders use the full character name** (1.3.6), like `Level-ups\Grimbold Stonefist`. In WoW Forever only the full name is unique, so two characters never share a folder. When you update the helper, your existing folders are moved to the full name automatically (merged if needed, nothing is overwritten).
 
 - **Session Recap.** When you log out, a window shows what that play session added up to: time played, levels, XP, gold (looted, quest rewards, sold, spent), quests completed, best loot, new zones, bosses, rares, deaths and the zone you spent most time in. Each session also becomes one line in a diary per character (`/dingcam diary` shows the last five). `/dingcam recap` shows the current session any time. A `/reload` doesn't end a session; logging out, quitting or a crash does, and the diary line is written when you next log in. With the helper, the diary is also saved as `Diary\<Character full name>.txt` in your Journey folder.
 - **An on/off switch for every feature.** Type `/dingcam` (or click the minimap button) for the settings window. Level-up clip, glow screenshot and banner; the longer level 60 clip; boss and rare clips and screenshots; loot in the world and in dungeons; new zones; gear at level 1 and every 10 levels; the Session Recap and whether it opens at logout; each reminder; asking for /played at login; and the minimap button itself. Everything starts on, and changes apply right away.
-- **A minimap button.** Left-click for the settings, right-click for the Session Recap, drag to move it.
+- **A minimap button.** Left-click for the settings, right-click for the Session Recap, Shift-click for your gear card, drag to move it.
 - **Update the helper too** (download it and run `Install DingCam` again) to get everything: helper 1.3.0 is needed for the clip and screenshot switches to work fully (with an older helper, a moment whose clip you switched off keeps its screenshots in WoW's Screenshots folder unsorted) and to save the diary as a file. The addon tells you once in chat if your helper is older.
 
 ## What it captures
@@ -95,6 +96,7 @@ Windows may warn about running a downloaded script. The helper is plain PowerShe
 | `/dingcam boss` / `rare` | Test a boss or rare kill clip |
 | `/dingcam loot` | Test the loot flash with your equipped weapon |
 | `/dingcam zone` | Retake the first-visit shot for this zone |
+| `/dingcam card` | Shows your gear card any time (just to look; nothing is saved) |
 | `/dingcam gear` | Test the gear snapshot |
 | `/dingcam warn` | Preview the "recorder is off" warning |
 | `/dingcam remind` | Turn helper reminders back on, if you clicked "Don't remind me" |

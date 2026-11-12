@@ -635,6 +635,15 @@ local function buildCard()
     for i, id in ipairs(SLOTS_LEFT) do slot(id, 22, -64 - (i - 1) * 50, "left") end
     for i, id in ipairs(SLOTS_RIGHT) do slot(id, CARD_W - 22 - 36, -64 - (i - 1) * 50, "right") end
     for i, id in ipairs(SLOTS_BOTTOM) do slot(id, 150 + (i - 1) * 200, -478, "bottom") end
+    -- only shown when the card is opened by hand (/dingcam card); never in the saved picture
+    c.closeBtn = CreateFrame("Button", nil, c, "UIPanelCloseButton")
+    c.closeBtn:SetPoint("TOPRIGHT", -4, -4); c.closeBtn:Hide()
+    c:SetScript("OnMouseUp", function(self) if self.viewing then self:Hide() end end)
+    c:SetScript("OnHide", function(self)
+        if not self.viewing then return end
+        self.viewing = nil; self:EnableMouse(false); self.closeBtn:Hide()
+        for i = #UISpecialFrames, 1, -1 do if UISpecialFrames[i] == "DingCamGearCard" then table.remove(UISpecialFrames, i) end end
+    end)
     c:Hide()
     return c
 end
@@ -688,6 +697,7 @@ local function takeGearShot()
         if not ok or not c then print("|cffe6b85cDingCam|r: couldn't build the gear card (" .. tostring(c) .. ")."); return end
         card = c
     end
+    if card.viewing then card:Hide() end   -- closes the hand-opened view (and its close button) first
     gearShooting = true
     local ok, err = pcall(fillCard, p.level)
     if not ok then print("|cffe6b85cDingCam|r: gear card problem (" .. tostring(err) .. ").") end
@@ -714,6 +724,27 @@ local function gearShot(level, isTest)
     DingCamCharDB = DingCamCharDB or {}
     DingCamCharDB.gearPending = { level = level, test = isTest or nil }
     C_Timer.After(0.2, takeGearShot)
+end
+
+-- /dingcam card (or Shift-click the minimap button): look at the gear card any time. Nothing is saved.
+-- Click it, press Escape or its X to close it.
+function ns.viewCard()
+    if gearShooting then return end
+    if card and card:IsShown() then card:Hide(); return end
+    if not card then
+        local ok, c = pcall(buildCard)
+        if not ok or not c then print("|cffe6b85cDingCam|r: couldn't build the gear card (" .. tostring(c) .. ")."); return end
+        card = c
+    end
+    local ok, err = pcall(fillCard, UnitLevel("player"))
+    if not ok then print("|cffe6b85cDingCam|r: gear card problem (" .. tostring(err) .. ").") end
+    card.footer:SetText("DingCam  -  " .. date("%d %b %Y") .. "  -  click to close")
+    local h = UIParent:GetHeight()
+    card:SetScale(math.max(1, math.min(1.8, (h and h > 0) and (h * 0.75 / CARD_H) or 1.25)))
+    card.viewing = true
+    card:EnableMouse(true); card.closeBtn:Show()
+    tinsert(UISpecialFrames, "DingCamGearCard")
+    card:Show()
 end
 
 local f = CreateFrame("Frame")
@@ -854,6 +885,8 @@ SlashCmdList.DINGCAM = function(msg)
             onLoot(LOOT_ITEM_SELF:format(found))   -- the exact message WoW sends when you win or loot an item
             C_Timer.After(2, function() simDungeon = false end)
         end
+    elseif msg == "card" or msg == "sheet" then   -- just look at the gear card; nothing is saved
+        ns.viewCard()
     elseif msg == "gear" then   -- test the gear snapshot
         if InCombatLockdown() then print("|cffe6b85cDingCam|r: test gear snapshot after this fight.") end
         gearShot(UnitLevel("player"), true)
@@ -887,6 +920,6 @@ SlashCmdList.DINGCAM = function(msg)
     else
         print("|cffe6b85cDingCam|r: active" .. (helperRunning() and "" or " (screenshots only: the PC helper isn't running)") ..
               ". /dingcam opens the settings, /dingcam recap shows this session, /dingcam test saves a test moment, " ..
-              "/dingcam status checks the PC helper.")
+              "/dingcam card shows your gear card, /dingcam status checks the PC helper.")
     end
 end
