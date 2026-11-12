@@ -9,7 +9,7 @@ local DEFAULTS = {
     dingClip = true, dingGlow = true, dingBanner = true, bigMoment = true,
     bossClip = true, bossShot = true, rareClip = true, rareShot = true,
     lootWorld = true, lootDungeon = true,
-    zones = true, gearStart = true, gearEvery = true,
+    zones = true, gearStart = true, gearEvery = true, gearInterval = 10,
     recap = true, recapPopup = true,
     warnings = true, helperUpdate = true, played = true, minimap = true,
     minimapAngle = 200,
@@ -38,7 +38,11 @@ local function set(key, on)
         ns.setOpt(key, on)
     end
     if key == "minimap" and ns.minimapButton then ns.minimapButton() end
+    if key == "gearEvery" and ns.refreshOptions then ns.refreshOptions() end   -- dims the slider below it
 end
+
+local function gearInterval() return math.max(1, math.min(10, math.floor(tonumber(ns.opt("gearInterval")) or 10))) end
+local function gearLabel(n) return n == 1 and "Gear card every level" or ("Gear card every " .. n .. " levels") end
 
 -- ---------- the settings window ----------
 local NEW = " |cff40ff40NEW|r"
@@ -64,7 +68,8 @@ local COLUMNS = {
         { key = "zones",      label = "Screenshot on your first visit" },
         { head = "Gear" },
         { key = "gearStart",  label = "Screenshot at level 1" },
-        { key = "gearEvery",  label = "Screenshot every 10 levels" },
+        { key = "gearEvery",  label = "Gear card every 10 levels" },
+        { slider = "gearInterval" },
         { head = "Session recap" .. NEW },
         { key = "recap",      label = "Keep a recap and diary" },
         { key = "recapPopup", label = "Open the recap when you log out" },
@@ -80,10 +85,17 @@ local COLUMNS = {
 local HEAD_GAP, ROW_GAP, COL_WIDTH = 24, 22, 290
 
 local panel, boxes, status = nil, {}, nil
+local labels, gearSlider = {}, nil
 
 local function refresh()
     if not panel then return end
     for key, b in pairs(boxes) do b:SetChecked(get(key)) end
+    if gearSlider then
+        gearSlider:SetValue(gearInterval())
+        local on = get("gearEvery")
+        gearSlider:SetAlpha(on and 1 or 0.4); gearSlider:EnableMouse(on)
+        if labels.gearEvery then labels.gearEvery:SetText(gearLabel(gearInterval())) end
+    end
     local old = ns.helperOutdated and ns.helperOutdated()
     if old then
         status:SetText("|cff40ff40The PC helper is running|r (version " .. old .. "). |cffffd100Update it to " ..
@@ -101,7 +113,7 @@ ns.refreshOptions = refresh
 local function build()
     local ok, f = pcall(CreateFrame, "Frame", "DingCamOptionsFrame", UIParent, "BasicFrameTemplateWithInset")
     if not ok then f = CreateFrame("Frame", "DingCamOptionsFrame", UIParent, "BackdropTemplate") end
-    f:SetSize(2 * COL_WIDTH + 30, 486); f:SetPoint("CENTER", 0, 40); f:SetFrameStrata("DIALOG")
+    f:SetSize(2 * COL_WIDTH + 30, 516); f:SetPoint("CENTER", 0, 40); f:SetFrameStrata("DIALOG")
     f:SetMovable(true); f:EnableMouse(true); f:RegisterForDrag("LeftButton"); f:SetClampedToScreen(true)
     f:SetScript("OnDragStart", f.StartMoving); f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:SetScript("OnShow", refresh)
@@ -119,6 +131,26 @@ local function build()
                 local h = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 h:SetPoint("TOPLEFT", x + 4, y - 6); h:SetText(item.head)
                 y = y - HEAD_GAP
+            elseif item.slider then
+                -- "every N levels" slider, 1 to 10 (drawn by hand so it works on any client's templates)
+                local s = CreateFrame("Slider", nil, f, "BackdropTemplate")
+                s:SetOrientation("HORIZONTAL"); s:SetSize(200, 16); s:SetPoint("TOPLEFT", x + 30, y - 6)
+                s:SetMinMaxValues(1, 10); s:SetValueStep(1)
+                if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+                if s.SetBackdrop then
+                    s:SetBackdrop({ bgFile = "Interface\\Buttons\\UI-SliderBar-Background", edgeFile = "Interface\\Buttons\\UI-SliderBar-Border",
+                                    tile = true, tileSize = 8, edgeSize = 8, insets = { left = 3, right = 3, top = 6, bottom = 6 } })
+                end
+                s:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+                local lo = s:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"); lo:SetPoint("RIGHT", s, "LEFT", -4, 0); lo:SetText("1")
+                local hi = s:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"); hi:SetPoint("LEFT", s, "RIGHT", 4, 0); hi:SetText("10")
+                s:SetScript("OnValueChanged", function(_, v)
+                    local n = math.max(1, math.min(10, math.floor(v + 0.5)))
+                    ns.setOpt("gearInterval", n)
+                    if labels.gearEvery then labels.gearEvery:SetText(gearLabel(n)) end
+                end)
+                gearSlider = s
+                y = y - 30
             else
                 local b = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
                 b:SetSize(24, 24)
@@ -129,7 +161,7 @@ local function build()
                 b:SetHitRectInsets(0, -(COL_WIDTH - 40), 0, 0)   -- the words are clickable too
                 local key = item.key
                 b:SetScript("OnClick", function(self) set(key, self:GetChecked() and true or false) end)
-                boxes[key] = b
+                boxes[key] = b; labels[key] = text
                 y = y - ROW_GAP
             end
         end

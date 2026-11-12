@@ -119,7 +119,7 @@ local function buildFrame()
     f:SetSize(340, 400); f:SetPoint("CENTER", 0, 60); f:SetFrameStrata("DIALOG")
     f:SetMovable(true); f:EnableMouse(true); f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving); f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    if f.TitleText then f.TitleText:SetText("Session Recap") end
+    if f.TitleText then f.TitleText:SetText("DingCam Session Recap") end
     f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     f.title:SetPoint("TOP", 0, -32)
     rowValues = {}

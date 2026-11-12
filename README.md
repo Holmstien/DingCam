@@ -28,11 +28,11 @@ DingCam Journey\
 ## New in 1.3
 
 - **Gear cards** (1.3.10). The level 1 and every-10-levels gear shot is now DingCam's own card with your model and all your gear, saved automatically: nothing to press.
-  Since 1.3.11 you can also open it any time with `/dingcam card` or Shift-click on the minimap button, just to look.
+  Since 1.3.11 you can also open it any time with `/dingcam card` or Shift-click on the minimap button, just to look. Since 1.3.12 a slider in `/dingcam` sets how often it comes: every 1 to 10 levels.
 - **Folders use the full character name** (1.3.6), like `Level-ups\Grimbold Stonefist`. In WoW Forever only the full name is unique, so two characters never share a folder. When you update the helper, your existing folders are moved to the full name automatically (merged if needed, nothing is overwritten).
 
 - **Session Recap.** When you log out, a window shows what that play session added up to: time played, levels, XP, gold (looted, quest rewards, sold, spent), quests completed, best loot, new zones, bosses, rares, deaths and the zone you spent most time in. Each session also becomes one line in a diary per character (`/dingcam diary` shows the last five). `/dingcam recap` shows the current session any time. A `/reload` doesn't end a session; logging out, quitting or a crash does, and the diary line is written when you next log in. With the helper, the diary is also saved as `Diary\<Character full name>.txt` in your Journey folder.
-- **An on/off switch for every feature.** Type `/dingcam` (or click the minimap button) for the settings window. Level-up clip, glow screenshot and banner; the longer level 60 clip; boss and rare clips and screenshots; loot in the world and in dungeons; new zones; gear at level 1 and every 10 levels; the Session Recap and whether it opens at logout; each reminder; asking for /played at login; and the minimap button itself. Everything starts on, and changes apply right away.
+- **An on/off switch for every feature.** Type `/dingcam` (or click the minimap button) for the settings window. Level-up clip, glow screenshot and banner; the longer level 60 clip; boss and rare clips and screenshots; loot in the world and in dungeons; new zones; gear at level 1 and every 10 levels (with a slider for every 1 to 10 levels); the Session Recap and whether it opens at logout; each reminder; asking for /played at login; and the minimap button itself. Everything starts on, and changes apply right away.
 - **A minimap button.** Left-click for the settings, right-click for the Session Recap, Shift-click for your gear card, drag to move it.
 - **Update the helper too** (download it and run `Install DingCam` again) to get everything: helper 1.3.0 is needed for the clip and screenshot switches to work fully (with an older helper, a moment whose clip you switched off keeps its screenshots in WoW's Screenshots folder unsorted) and to save the diary as a file. The addon tells you once in chat if your helper is older.
 
@@ -46,7 +46,7 @@ DingCam Journey\
 | **Rare kill** | A clip and a screenshot, for rares that die while tagged to you. |
 | **Epic and rare loot** | The item's tooltip flashes mid-screen for a split second and is screenshotted. This covers blue and purple Bind-on-Equip drops in the world, and any blue or purple you receive in a dungeon or raid. |
 | **New zone** | A screenshot the first time each character enters a zone. |
-| **Your gear** | A gear card at level 1 and every 10 levels: your character's 3D model and every item you're wearing, colored by quality, with your level, zone and /played. It pops up for a moment and is saved on its own (after the fight, if you're in one). |
+| **Your gear** | A gear card at level 1 and every 10 levels (or as often as you like: a slider in `/dingcam` sets every 1 to 10 levels): your character's 3D model and every item you're wearing, colored by quality, with your level, zone and /played. It pops up for a moment and is saved on its own (after the fight, if you're in one). |
 | **Every session** | The Session Recap window at logout, and one diary line per session. |
 
 Each of these can be switched off in the settings window (`/dingcam`). Your own screenshots (Print Screen) are never moved, renamed or deleted.

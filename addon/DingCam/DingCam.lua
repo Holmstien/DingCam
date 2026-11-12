@@ -581,12 +581,15 @@ local function onLoot(msg, retried)
     if wanted then lootShot(link or itemString, simDungeon or nil) end
 end
 
--- Gear snapshots: at level 1 and every 10 levels. Since 1.3.10 DingCam shows its OWN gear card (your 3D model and every
+-- Gear snapshots: at level 1 and every N levels (gearInterval, 1-10, default 10; set with the slider in the settings). Since 1.3.10 DingCam shows its OWN gear card (your 3D model and every
 -- equipped item), screenshots it and closes it: nothing to press. It never opens Blizzard's character panel: a Blizzard
 -- panel opened by addon code "taints" Blizzard's health bars, which then error on every update (health is a secret
 -- value in this client; that was the 1.3.8 "Fatality" loop). Logged in DingCamGear; the helper files the picture under
 -- Gear\<Character> at logout or /reload. A shot that comes due mid-fight waits for the fight to end.
-local GEAR_EVERY = 10
+local function gearEvery()   -- how many levels between gear cards (the settings slider), 1 to 10
+    local n = math.floor(tonumber(opt("gearInterval")) or 10)
+    return math.max(1, math.min(10, n))
+end
 local GEAR_DELAY = BANNER_DELAY + 1.5   -- seconds after a ding: after the banner shot, so they never collide
 local gearWaiting, gearShooting
 
@@ -778,7 +781,7 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
         signal(level)   -- checks the level-up switches
         -- nobig: the longer level 60 clip is switched off, so the helper doesn't arm it at 59
         DingCamActive = { char = charKey(), level = level, nobig = (not opt("bigMoment")) or nil }
-        if level % GEAR_EVERY == 0 and opt("gearEvery") then C_Timer.After(GEAR_DELAY, function() gearShot(level) end) end
+        if level % gearEvery() == 0 and opt("gearEvery") then C_Timer.After(GEAR_DELAY, function() gearShot(level) end) end
         if level == 59 and helperRunning() and opt("bigMoment") then C_Timer.After(BANNER_DELAY + 2, almost60) end   -- after the banner shot, so it never covers it
     elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight: ask after the fight
         if gearWaiting then
