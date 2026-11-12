@@ -1,8 +1,8 @@
 # DingCam
 
-https://github.com/user-attachments/assets/4ebc6576-b646-4b1e-b6d6-33a7db82093f
+https://github.com/user-attachments/assets/c970a441-6280-428c-82a3-21790eff5a82
 
-*Levels 1 to 24 of one character, cut together from the clips and screenshots DingCam saved on its own (the edit and music were made afterwards).*
+*Levels 1 to 27 of one character and everything DingCam saved along the way, cut together from the clips and screenshots it saved on its own (the edit and music were made afterwards). [Watch in HD on YouTube](https://youtu.be/4vn8uHS0JZQ).*
 
 **Your WoW Forever journey, recorded automatically.** Every level-up, boss kill, rare kill, epic drop and new zone is saved as a video clip or screenshot, then filed by character, without you pressing anything.
 
