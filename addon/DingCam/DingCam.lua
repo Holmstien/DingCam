@@ -81,7 +81,7 @@ ns.helperRunning = helperRunning
 
 -- The oldest PC helper that knows everything this addon does (1.3.0: the on/off switches for clips, screenshots and
 -- banners, and the Session Recap diary file; 1.3.6: folders named with the full character name). Raise it only when the addon needs a new helper.
-local HELPER_NEEDED = "1.3.6"
+local HELPER_NEEDED = "1.3.13"   -- 1.3.13: the level 60 clip never waits so long that the ding falls out of it
 local function versionLess(a, b)   -- "1.2.1" < "1.3.0"; a "-dev" suffix is ignored
     local x, y = {}, {}
     for n in tostring(a):gmatch("%d+") do x[#x + 1] = tonumber(n) end
@@ -781,7 +781,8 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
         signal(level)   -- checks the level-up switches
         -- nobig: the longer level 60 clip is switched off, so the helper doesn't arm it at 59
         DingCamActive = { char = charKey(), level = level, nobig = (not opt("bigMoment")) or nil }
-        if level % gearEvery() == 0 and opt("gearEvery") then C_Timer.After(GEAR_DELAY, function() gearShot(level) end) end
+        -- At 60 the helper may wait up to 25 s before saving the longer clip, so the card waits until after that (30 s).
+        if level % gearEvery() == 0 and opt("gearEvery") then C_Timer.After(level == 60 and 30 or GEAR_DELAY, function() gearShot(level) end) end
         if level == 59 and helperRunning() and opt("bigMoment") then C_Timer.After(BANNER_DELAY + 2, almost60) end   -- after the banner shot, so it never covers it
     elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight: ask after the fight
         if gearWaiting then

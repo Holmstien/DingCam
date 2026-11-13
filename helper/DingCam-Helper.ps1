@@ -340,9 +340,53 @@ function Send-Keys($vks) {
     }
 }
 
+# How many seconds the recorder keeps (its Instant Replay / Replay Buffer length), or 0 when it can't be read:
+# NVIDIA from its overlay settings, OBS from the active profile's basic.ini, AMD not at all.
+function Get-ReplaySeconds($rec) {
+    if ($rec -eq 'nvidia') {
+        try { return [int](Get-Content $nvSettings -Raw | ConvertFrom-Json).settings.video.irBufferLength } catch { return 0 }
+    }
+    if ($rec -eq 'obs') {
+        try {
+            $obs = Join-Path $env:APPDATA 'obs-studio'
+            $profileDir = $null
+            foreach ($ini in 'user.ini', 'global.ini') {   # OBS 30+ keeps the current profile in user.ini, older ones in global.ini
+                $p = Join-Path $obs $ini
+                if (-not $profileDir -and (Test-Path $p)) {
+                    $m = Select-String -Path $p -Pattern '^\s*ProfileDir\s*=\s*(.+)$' | Select-Object -First 1
+                    if ($m) { $profileDir = $m.Matches[0].Groups[1].Value.Trim() }
+                }
+            }
+            if (-not $profileDir) { return 0 }
+            $basic = Join-Path $obs "basic\profiles\$profileDir\basic.ini"
+            if (-not (Test-Path $basic)) { return 0 }
+            $section = ''; $mode = 'Simple'; $simple = 20; $adv = 20   # 20 s is OBS's default
+            foreach ($line in Get-Content $basic) {
+                if ($line -match '^\s*\[(.+)\]\s*$') { $section = $Matches[1]; continue }
+                if ($section -eq 'Output' -and $line -match '^\s*Mode\s*=\s*(\S+)') { $mode = $Matches[1] }
+                if ($section -eq 'SimpleOutput' -and $line -match '^\s*RecRBTime\s*=\s*(\d+)') { $simple = [int]$Matches[1] }
+                if ($section -eq 'AdvOut' -and $line -match '^\s*RecRBTime\s*=\s*(\d+)') { $adv = [int]$Matches[1] }
+            }
+            return $(if ($mode -eq 'Advanced') { $adv } else { $simple })
+        } catch { return 0 }
+    }
+    0
+}
+
+# Seconds to wait after the ding before saving. Normal dings: 5. Level 60: up to 25 for the celebration, but never so
+# long that the ding falls out of the clip: at most the replay length minus 6 s. If the length is unknown (AMD), assume
+# the shortest any recorder allows (15 s), so the ding is always in.
+function Get-SaveWait($rec) {
+    if (-not $script:bigMoment) { return 5 }
+    $len = Get-ReplaySeconds $rec
+    if ($len -le 0) { $len = 15 }
+    [Math]::Max(5, [Math]::Min(25, $len - 6))
+}
+
 $script:bigMoment = $false   # armed when the newest ding on record is level 59: the 60 ding gets extra time after it
 function Save-Clip($dingTime) {
-    $wait = if ($script:bigMoment) { 25 } else { 5 }   # wait so the moment (and, at 60, the celebration) lands inside the clip
+    $wait = Get-SaveWait (Get-Recorder)   # so the moment (and, at 60, as much celebration as fits) lands inside the clip
+    if ($wait -ne 5) { Log "Level 60: saving the clip $wait s after the ding (replay length $(Get-ReplaySeconds (Get-Recorder)) s; 0 = unknown)." }
     Start-Sleep -Seconds $wait
     $t0 = Get-Date
     $rec = Get-Recorder
@@ -452,7 +496,7 @@ $script:bannerSources = @{}   # screenshots already used as banners (so loot/zon
 $script:bannerOf = @{}        # pending banner copy -> its source screenshot
 
 # Tells the addon (read at login or /reload): which recorder, whether it's on and its length (when known: NVIDIA
-# reports both, OBS reports on/off, AMD neither), last failed clip, level 60 mode armed, and when the helper last
+# and OBS report both, AMD neither), last failed clip, level 60 mode armed, and when the helper last
 # checked in (so the addon can tell you if the helper isn't running).
 $script:lastFail = $null
 function Update-Status {
@@ -465,6 +509,7 @@ function Update-Status {
         try { $v = (Get-Content $nvSettings -Raw | ConvertFrom-Json).settings.video; $on = [bool]$v.irEnabled; $len = [int]$v.irBufferLength } catch { }
         if ($script:irActual -eq $false -and $script:irTries -ge 3) { $on = $false }   # NVIDIA's setting says on, but it's off and DingCam couldn't fix it
     }
+    if ($rec -eq 'obs') { $len = Get-ReplaySeconds 'obs' }
     $seen = [Math]::Floor([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() / 60) * 60   # to the minute, so the file changes at most once a minute
     $lua = "-- Written by the DingCam helper on your PC. Do not edit.`r`nDingCamStatus = {{ replayOff = {0}, lastFail = {1}, bigMoment = {2}, bigMomentChar = `"{4}`", replayLength = {3}, helperVersion = `"{5}`", helperSeen = {6}, recorder = `"{7}`" }}`r`n" -f `
            ($(if ($on -eq $false) { 'true' } else { 'false' })), ($(if ($script:lastFail) { '"' + $script:lastFail + '"' } else { 'nil' })),
