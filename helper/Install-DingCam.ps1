@@ -5,7 +5,8 @@ param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'DingCam\app'),
     [string]$Settings,                                                       # testing: a settings file for the helper
     [string]$RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run', # testing: another key, so Windows startup isn't touched
-    [string]$TaskName = 'DingCam helper'                                     # testing: another task name
+    [string]$TaskName = 'DingCam helper',                                    # testing: another task name
+    [switch]$FromSetup                                                       # run by DingCam-Setup.exe (its own window shows this report)
 )
 $ErrorActionPreference = 'Stop'
 
@@ -125,4 +126,5 @@ Write-Host "`nYour Journey (clips and pictures, one folder per character):" -For
 Info $c.JourneyFolder
 Write-Host "Settings: " -NoNewline; Write-Host $c.Settings
 Write-Host "Log:      " -NoNewline; Write-Host $c.Log
-Write-Host "`nIn game, type  /dingcam test  to save a test clip. To remove DingCam, run 'Uninstall DingCam'.`n" -ForegroundColor White
+$removeHow = if ($FromSetup) { 'Windows Settings > Apps > DingCam > Uninstall' } else { "'Uninstall DingCam'" }
+Write-Host "`nIn game, type  /dingcam test  to save a test clip. To remove DingCam: $removeHow.`n" -ForegroundColor White

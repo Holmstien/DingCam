@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/c970a441-6280-428c-82a3-21790eff5a82
 
 **Your WoW Forever journey, recorded automatically.** Every level-up, boss kill, rare kill, epic drop and new zone is saved as a video clip or screenshot, then filed by character, without you pressing anything.
 
-**Want the video clips too?** They come from a small free helper for your PC: [download it from Releases](https://github.com/Holmstien/DingCam/releases/latest), unzip it and double-click **Install DingCam** (see [How it works](#how-it-works)). Without it, the addon still saves all the screenshots.
+**Want the video clips too?** They come from a small free helper for your PC: [download **DingCam-Setup** from Releases](https://github.com/Holmstien/DingCam/releases/latest) and run it (see [Install](#install)). Without it, the addon still saves all the screenshots.
 
 | The golden glow | The banner | A blue drop in a dungeon |
 |---|---|---|
@@ -34,7 +34,7 @@ DingCam Journey\
 - **Session Recap.** When you log out, a window shows what that play session added up to: time played, levels, XP, gold (looted, quest rewards, sold, spent), quests completed, best loot, new zones, bosses, rares, deaths and the zone you spent most time in. Each session also becomes one line in a diary per character (`/dingcam diary` shows the last five). `/dingcam recap` shows the current session any time. A `/reload` doesn't end a session; logging out, quitting or a crash does, and the diary line is written when you next log in. With the helper, the diary is also saved as `Diary\<Character full name>.txt` in your Journey folder.
 - **An on/off switch for every feature.** Type `/dingcam` (or click the minimap button) for the settings window. Level-up clip, glow screenshot and banner; the longer level 60 clip; boss and rare clips and screenshots; loot in the world and in dungeons; new zones; gear at level 1 and every 10 levels (with a slider for every 1 to 10 levels); the Session Recap and whether it opens at logout; each reminder; asking for /played at login; and the minimap button itself. Everything starts on, and changes apply right away.
 - **A minimap button.** Left-click for the settings, right-click for the Session Recap, Shift-click for your gear card, drag to move it.
-- **Update the helper too** (download it and run `Install DingCam` again) to get everything: helper 1.3.13 is the latest (it makes sure your level 60 clip always includes the ding); helper 1.3.0 or newer is needed for the clip and screenshot switches to work fully (with an older helper, a moment whose clip you switched off keeps its screenshots in WoW's Screenshots folder unsorted) and to save the diary as a file. The addon tells you once in chat if your helper is older.
+- **Update the helper too** (open **Update DingCam** from the Start menu, or download DingCam-Setup again) to get everything: helper 1.3.13 or newer (it makes sure your level 60 clip always includes the ding); helper 1.3.0 or newer is needed for the clip and screenshot switches to work fully (with an older helper, a moment whose clip you switched off keeps its screenshots in WoW's Screenshots folder unsorted) and to save the diary as a file. The addon tells you once in chat if your helper is older.
 
 ## What it captures
 
@@ -74,14 +74,17 @@ DingCam picks the recorder for you: OBS while it's open with its Replay Buffer r
 ## Install
 
 1. **Addon:** install **DingCam** from CurseForge, or copy the `addon\DingCam` folder from the download into `World of Warcraft\_forever_\Interface\AddOns`.
-2. **Helper:** download the latest release from the [Releases page](https://github.com/Holmstien/DingCam/releases), unzip it, and double-click **`Install DingCam`**. No admin rights are needed. It:
+2. **Helper:** download **`DingCam-Setup-<version>.exe`** from the [latest release](https://github.com/Holmstien/DingCam/releases/latest) and run it. Click **Install**, then **Finish**. No admin rights are needed. It:
    - installs the helper for your Windows account,
    - sets it to start when you sign in, and checks every 15 minutes that it's still running (starting it again if it ever stops),
    - finds your WoW folder and your recorder (NVIDIA, AMD or OBS) on its own,
-   - and shows a short report of anything you need to fix.
+   - shows a short report of anything you need to fix,
+   - and adds **Update DingCam** to your Start menu.
 3. **Check in game:** type `/dingcam status`, then `/dingcam test` to save a test clip. After a `/reload`, it appears in `Videos\DingCam Journey`.
 
-Windows may warn about running a downloaded script. The helper is plain PowerShell you can read (`helper\DingCam-Helper.ps1`). It never connects to the internet; the only connection it ever makes is to OBS on your own PC, if you use OBS.
+**"Windows protected your PC"?** DingCam is a small free program that isn't code-signed yet, so Windows may show this the first time. Click **More info**, then **Run anyway**. The helper is plain PowerShell you can read (`helper\DingCam-Helper.ps1`). It never connects to the internet; the only connection it ever makes is to OBS on your own PC, if you use OBS. The only part of DingCam that goes online is **Update DingCam**, and only when you open it (it checks this GitHub page for a newer version).
+
+*Prefer a zip?* `DingCam-<version>.zip` has the same helper: unzip it and double-click **`Install DingCam`**.
 
 ## Commands
 
@@ -103,7 +106,7 @@ Windows may warn about running a downloaded script. The helper is plain PowerShe
 
 ## Settings
 
-The helper finds everything automatically. To change something, edit `%APPDATA%\DingCam\settings.json` and run `Install DingCam` again:
+The helper finds everything automatically. To change something, edit `%APPDATA%\DingCam\settings.json` and run DingCam-Setup again (or `Install DingCam` from the zip):
 
 | Setting | Empty means |
 |---|---|
@@ -118,11 +121,11 @@ The log is at `%LOCALAPPDATA%\DingCam\dingcam.log`.
 
 ## Update
 
-Download the latest release and double-click **`Install DingCam`** again. It stops the old helper, puts the new one in its place and starts it. Your settings and your Journey folder are kept.
+Open **Update DingCam** from the Start menu. It checks for a newer version and, if there is one, installs it with one click. Or download the newest DingCam-Setup and run it: it says **Update** and keeps your settings and your Journey folder. (With the zip: download it again and double-click **`Install DingCam`**.)
 
 ## Uninstall
 
-Double-click **`Uninstall DingCam`**. It stops the helper and removes it from startup and the 15-minute check. Your Journey folder is never touched. Remove the addon in CurseForge or by deleting its folder.
+Windows **Settings > Apps > DingCam > Uninstall** (or, with the zip, double-click **`Uninstall DingCam`**). It stops the helper and removes it from startup and the 15-minute check. Your Journey folder is never touched. Remove the addon in CurseForge or by deleting its folder.
 
 ## FAQ
 

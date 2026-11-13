@@ -3,3 +3,4 @@ dist/
 # Private working notes
 NOTES.md
 CURSEFORGE.md
+build/stage/

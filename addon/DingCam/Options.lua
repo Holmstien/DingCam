@@ -100,7 +100,7 @@ local function refresh()
     if old then
         status:SetText("|cff40ff40The PC helper is running|r (version " .. old .. "). |cffffd100Update it to " ..
             ns.HELPER_NEEDED .. "|r for the switches below, the diary file and full-name folders:\n" ..
-            "download it from github.com/Holmstien/DingCam and run Install DingCam again.")
+            "open |cffffff00Update DingCam|r from the Windows Start menu, or download DingCam-Setup from github.com/Holmstien/DingCam.")
     elseif ns.helperRunning and ns.helperRunning() then
         status:SetText("|cff40ff40The PC helper is running.|r Video clips are saved.")
     else

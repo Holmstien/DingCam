@@ -98,8 +98,8 @@ local function helperOutdated()
 end
 ns.helperOutdated = helperOutdated
 ns.HELPER_NEEDED = HELPER_NEEDED
-local UPDATE_HOW = "To update, download it from " .. HELPER_URL .. " and double-click Install DingCam again " ..
-                   "(it replaces the old one and keeps your settings and files)."
+local UPDATE_HOW = "To update, open |cffffff00Update DingCam|r from the Windows Start menu (or download DingCam-Setup from " ..
+                   HELPER_URL .. " and run it). Your settings and files are kept."
 local function clipNote()
     return helperRunning() and ", clip saves in 5 seconds." or " (screenshot only: the PC helper isn't running, see /dingcam status)."
 end
@@ -384,7 +384,7 @@ end
 -- No helper on the PC (never installed, or not running): moments are still saved, as normal screenshots.
 -- Escape just closes it; only the button turns reminders off.
 local function noHelperDialog()
-    showDialog("|cffe6b85cDingCam|r\n\n|cffff4040The DingCam helper isn't running on your PC.|r\nLevel-ups, boss kills and rares are saved as screenshots only, without video clips.\n\nTo get clips, download the helper from\n|cffffff00" .. HELPER_URL .. "|r\nand run |cffffff00Install DingCam|r. Then type /reload.",
+    showDialog("|cffe6b85cDingCam|r\n\n|cffff4040The DingCam helper isn't running on your PC.|r\nLevel-ups, boss kills and rares are saved as screenshots only, without video clips.\n\nTo get clips, download |cffffff00DingCam-Setup|r from\n|cffffff00" .. HELPER_URL .. "|r\nand run it. Then type /reload.",
                "Got it", nil, "Don't remind me", function()
                    DingCamNoHelperWarn = true
                    print("|cffe6b85cDingCam|r: OK, no more helper reminders. /dingcam remind turns them back on.")
@@ -858,7 +858,7 @@ SlashCmdList.DINGCAM = function(msg)
             if s.lastFail then print("|cffe6b85cDingCam|r: |cffff4040your clip from " .. s.lastFail .. " was NOT saved.|r") end
         elseif s and s.helperSeen then
             print("|cffe6b85cDingCam|r: |cffff4040the PC helper isn't running|r (last seen " .. SecondsToTime(math.abs(time() - s.helperSeen)) ..
-                  " ago). Run Install DingCam again, or sign out of Windows and back in, then /reload.")
+                  " ago). Run the DingCam installer again, or sign out of Windows and back in, then /reload.")
         else
             print("|cffe6b85cDingCam|r: |cffff4040no PC helper found.|r Moments are saved as screenshots only. For clips, get the helper at " .. HELPER_URL .. ".")
         end
