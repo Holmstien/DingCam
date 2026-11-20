@@ -207,13 +207,32 @@ end
 
 -- Rares: remember rare/rare-elite mobs we see (target, mouseover, nameplates); if one dies while tagged to us
 -- (not grey-tapped by someone else), that's a rare kill.
+-- Since 1.3.15: WoW Forever now hides unit IDs (and sometimes names) during combat, so a kill is also recognised
+-- by the dying unit itself, with a backup check when the fight ends (nothing is hidden then).
 local rares = {}
+local lastRareName                         -- the last rare we saw, for when its name is hidden at the kill
+local lastRareKill, fightStart, targetFought = 0, 0, 0
+local function known(v) if readable(v) then return v end end   -- the plain value (false included), nil when hidden
+local function isRare(unit)                -- true / false, or nil when the game hides it
+    if not UnitExists(unit) then return false end
+    local c, p = known(UnitClassification(unit)), known(UnitIsPlayer(unit))
+    if c == nil or p == nil then return nil end
+    return (c == "rare" or c == "rareelite") and not p
+end
 local function noteRare(unit)
-    local c = UnitExists(unit) and UnitClassification(unit)
-    if not readable(c) then return end
-    local guid = UnitGUID(unit)
-    if not readable(guid) then return end
-    if (c == "rare" or c == "rareelite") and not UnitIsPlayer(unit) then rares[guid] = UnitName(unit) end
+    if not isRare(unit) then return end
+    local n = known(UnitName(unit))
+    if n then lastRareName = n end
+    local guid = known(UnitGUID(unit))
+    if guid then rares[guid] = n or lastRareName end
+end
+-- one rare kill = one clip, however many of the checks see it (target + nameplate + end of fight)
+local function rareKill(name)
+    if GetTime() - lastRareKill < 20 then return end
+    lastRareKill = GetTime()
+    if ns.recapRare then pcall(ns.recapRare) end
+    name = known(name)
+    killEvent("rare", (name and name ~= "" and name) or lastRareName or "Rare")
 end
 
 -- First visit to a zone (per character): screenshot once the big zone-name text is up.
@@ -766,14 +785,21 @@ f:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 f:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 f:RegisterEvent("UNIT_HEALTH")   -- not the combat log: this client forbids addons from registering for it
 f:RegisterEvent("PLAYER_REGEN_ENABLED")
+f:RegisterEvent("PLAYER_REGEN_DISABLED")
 local firstEnter = true
 f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
-    if event == "UNIT_HEALTH" then   -- a rare we're watching (target or nameplate) just died while tagged to us
-        local guid = UnitGUID(level)
-        if readable(guid) and rares[guid] and UnitIsDead(level) then
-            if not UnitIsTapDenied(level) then killEvent("rare", rares[guid]) end   -- killEvent checks the switches
-            rares[guid] = nil
+    if event == "UNIT_HEALTH" then   -- did a rare tagged to us just die? (killEvent checks the switches)
+        local unit = level
+        if unit == "target" then targetFought = GetTime() end
+        if known(UnitIsDead(unit)) then
+            local guid = known(UnitGUID(unit))
+            local name = guid and rares[guid]
+            if name or isRare(unit) then
+                if known(UnitIsTapDenied(unit)) == false then rareKill(name or UnitName(unit)) end
+                if guid then rares[guid] = nil end
+            end
         end
+    elseif event == "PLAYER_REGEN_DISABLED" then fightStart = GetTime()
     elseif event == "PLAYER_TARGET_CHANGED" then noteRare("target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then noteRare("mouseover")
     elseif event == "NAME_PLATE_UNIT_ADDED" then noteRare(level)   -- first arg is the nameplate unit
@@ -785,6 +811,11 @@ f:SetScript("OnEvent", function(_, event, level, a2, a3, a4, a5)
         if level % gearEvery() == 0 and opt("gearEvery") then C_Timer.After(level == 60 and 30 or GEAR_DELAY, function() gearShot(level) end) end
         if level == 59 and helperRunning() and opt("bigMoment") then C_Timer.After(BANNER_DELAY + 2, almost60) end   -- after the banner shot, so it never covers it
     elseif event == "PLAYER_REGEN_ENABLED" then   -- a gear snapshot that came due mid-fight: ask after the fight
+        -- backup for a rare kill the game hid in combat: you fought your target this fight, and it is a dead rare you tagged
+        if fightStart > 0 and targetFought >= fightStart and isRare("target") and known(UnitIsDead("target"))
+           and known(UnitIsTapDenied("target")) == false then
+            rareKill(UnitName("target"))
+        end
         if gearWaiting then
             local g = gearWaiting
             gearWaiting = nil

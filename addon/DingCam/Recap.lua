@@ -261,6 +261,8 @@ local function noteRare(unit)
     if (c == "rare" or c == "rareelite") and not UnitIsPlayer(unit) then rares[guid] = true end
 end
 
+ns.recapRare = function() if S then S.rares = S.rares + 1 end end   -- called by DingCam.lua on each rare kill
+
 local f = CreateFrame("Frame")
 for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT", "PLAYER_CAMPING", "PLAYER_QUITING", "PLAYER_XP_UPDATE",
         "PLAYER_LEVEL_UP", "PLAYER_MONEY", "MERCHANT_SHOW", "MERCHANT_CLOSED", "QUEST_TURNED_IN", "CHAT_MSG_LOOT",
@@ -291,6 +293,14 @@ f:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
                         and (not prev.shownAt or (prev.last or prev.shownAt) - prev.shownAt > 60) then
                     C_Timer.After(6, function() fill(prev, true) end)
                 end
+                -- With "Keep a recap and diary" off, every session is dropped at the next login without a word.
+                -- Say so once per login, so it can't go unnoticed for days.
+                if not opt("recap") then
+                    C_Timer.After(8, function()
+                        print("|cffe6b85cDingCam|r: your session diary is |cffff4040off|r, so this session won't be saved. " ..
+                              "Type /dingcam and tick \"Keep a recap and diary\" to turn it back on.")
+                    end)
+                end
             else
                 S = DingCamRecap       -- a /reload: same session continues
                 S.char = key()
@@ -303,11 +313,7 @@ f:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
     if not S then return end
     S.last = time()
     if event == "UNIT_HEALTH" then
-        local guid = UnitGUID(a1)
-        if readable(guid) and rares[guid] and UnitIsDead(a1) then
-            if not UnitIsTapDenied(a1) then S.rares = S.rares + 1 end
-            rares[guid] = nil
-        end
+        -- rare kills are counted by DingCam.lua (ns.recapRare), which also catches the ones hidden in combat
     elseif event == "PLAYER_TARGET_CHANGED" then noteRare("target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then noteRare("mouseover")
     elseif event == "NAME_PLATE_UNIT_ADDED" then noteRare(a1)
